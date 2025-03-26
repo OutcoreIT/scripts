@@ -2,10 +2,30 @@
 
 set -e
 
-echo "🔄 Removendo pacotes conflitantes..."
-for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
-    sudo apt-get remove -y "$pkg" || true
-done
+# Função para perguntar ao usuário se deseja instalar o Docker
+perguntar_docker() {
+    while true; do
+        read -p "🐳 Deseja instalar o Docker? (s/n): " resposta
+        case $resposta in
+            [SsyY]* ) instalar_docker=true; break;;
+            [Nn]* ) instalar_docker=false; break;;
+            * ) echo "Por favor, responda com 's' para sim ou 'n' para não.";;
+        esac
+    done
+}
+
+# Perguntar ao usuário se deseja instalar o Docker
+perguntar_docker
+
+# Remover pacotes conflitantes do Docker apenas se o usuário optou por instalá-lo
+if [ "$instalar_docker" = true ]; then
+    echo "🔄 Removendo pacotes conflitantes..."
+    for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
+        sudo apt-get remove -y "$pkg" || true
+    done
+else
+    echo "🔄 Ignorando instalação do Docker conforme solicitado..."
+fi
 
 # Configurar timezone
 echo "🌎 Configurando timezone para America/Sao_Paulo..."
@@ -14,24 +34,30 @@ sudo timedatectl set-timezone America/Sao_Paulo
 # Atualizar pacotes e instalar dependências essenciais
 echo "📦 Atualizando pacotes e instalando dependências..."
 sudo apt update && sudo apt install -y \
-    ca-certificates curl iputils-ping traceroute btop zsh python3-pip coreutils vim gawk moreutils unzip git ruby ruby-dev
+    ca-certificates curl python3.8-venv iputils-ping traceroute zsh python3-pip coreutils vim gawk moreutils unzip git ruby ruby-dev
 
-# Configurar repositório oficial do Docker
-echo "🐳 Adicionando repositório oficial do Docker..."
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get install -y btop || true
 
-# Instalar Docker e plugins
-echo "🐳 Instalando Docker e plugins..."
-sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo snap install btop || true
 
-# Instalar Docker Compose manualmente
-echo "🐳 Instalando Docker Compose..."
-curl -SL https://github.com/docker/compose/releases/download/v2.34.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+# Configurar repositório oficial do Docker apenas se o usuário optou por instalá-lo
+if [ "$instalar_docker" = true ]; then
+    echo "🐳 Adicionando repositório oficial do Docker..."
+    sudo install -m 0755 -d /etc/apt/keyrings
+    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    sudo chmod a+r /etc/apt/keyrings/docker.asc
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    # Instalar Docker e plugins
+    echo "🐳 Instalando Docker e plugins..."
+    sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    # Instalar Docker Compose manualmente
+    echo "🐳 Instalando Docker Compose..."
+    curl -SL https://github.com/docker/compose/releases/download/v2.34.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+fi
 
 # Instalar e configurar Zsh sem iniciar automaticamente
 echo "💻 Instalando e configurando Zsh..."
@@ -67,7 +93,7 @@ done
 echo "🤦 Instalando TheFuck..."
 sudo apt install -y pipx
 pipx ensurepath
-pipx install thefuck
+pipx install thefuck --force
 
 # Instalar ColorLS via RubyGems
 echo "🌈 Instalando ColorLS..."
@@ -103,12 +129,24 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 echo "🛠️ Configurando Oh My Zsh com plugins e tema Powerlevel10k..."
 echo 'ZSH_THEME="powerlevel10k/powerlevel10k"' >> ~/.zshrc
 echo "[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh" >> ~/.zshrc
-echo "plugins=(git composer z zsh-autosuggestions zsh-syntax-highlighting docker docker-compose docker-machine jump sudo)" >> ~/.zshrc
+
+# Configurar plugins do Oh My Zsh, ajustando conforme a opção de Docker
+if [ "$instalar_docker" = true ]; then
+    echo "plugins=(git composer z zsh-autosuggestions zsh-syntax-highlighting docker docker-compose docker-machine jump sudo)" >> ~/.zshrc
+else
+    echo "plugins=(git composer z zsh-autosuggestions zsh-syntax-highlighting jump sudo)" >> ~/.zshrc
+fi
+
 echo "source ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" >> ~/.zshrc
 echo "source ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" >> ~/.zshrc
 echo "source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme" >> ~/.zshrc
 
 # Mensagem final para o usuário
 echo -e "\n✅ Configuração concluída!"
+if [ "$instalar_docker" = true ]; then
+    echo -e "🐳 Docker foi instalado com sucesso!"
+else
+    echo -e "ℹ️ Docker não foi instalado conforme solicitado."
+fi
 echo -e "👉 Para aplicar as mudanças, execute:\n"
 echo -e "   exec zsh\n"

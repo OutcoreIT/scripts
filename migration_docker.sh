@@ -32,28 +32,28 @@ if [ "$ACTION" == "backup" ]; then
 fi
 
 if [ "$ACTION" == "restore" ]; then
-    if [ ! -d "/tmp/" ]; then
-        echo "❌ ERRO: Nenhum backup encontrado em /tmp/"
+    if [ ! -d "$BACKUP_DIR" ]; then
+        echo "❌ ERRO: Nenhum backup encontrado em $BACKUP_DIR"
         exit 1
     fi
 
     echo "📦 Restaurando imagens Docker..."
-    docker load -i "/tmp/docker-images.tar"
+    docker load -i "$BACKUP_DIR/docker-images.tar"
 
     echo "📂 Restaurando volumes..."
-    sudo tar -xzf "/tmp/docker-volumes.tar.gz" -C /
+    sudo tar -xzf "$BACKUP_DIR/docker-volumes.tar.gz" -C /
 
     echo "🗃️ Restaurando containers..."
-    for file in /tmp/*_container.tar; do
+    for file in $BACKUP_DIR/*_container.tar; do
         CONTAINER_NAME=$(basename "$file" _container.tar)
         docker import "$file" "$CONTAINER_NAME"
     done
 
     echo "🌐 Restaurando redes..."
-    cat "/tmp/docker-networks.txt" | xargs -I {} docker network create {}
+    cat "$BACKUP_DIR/docker-networks.txt" | xargs -I {} docker network create {}
 
     echo "📁 Restaurando arquivos do diretório /docker..."
-    sudo tar -xzf "/tmp/docker-files.tar.gz" -C /
+    sudo tar -xzf "$BACKUP_DIR/docker-files.tar.gz" -C /
 
     echo "✅ Restauração concluída!"
     exit 0
