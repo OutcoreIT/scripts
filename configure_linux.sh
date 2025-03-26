@@ -88,7 +88,7 @@ for plugin in git composer z docker docker-compose docker-machine jump sudo; do
         git clone "https://github.com/ohmyzsh/ohmyzsh.git" --depth=1 ~/.oh-my-zsh/custom/plugins/$plugin
     fi
 done
-
+    
 # Instalar TheFuck corretamente com pipx
 echo "🤦 Instalando TheFuck..."
 sudo apt install -y pipx
