@@ -96,8 +96,18 @@ pipx ensurepath
 pipx install thefuck --force
 
 # Instalar ColorLS via RubyGems
-echo "🌈 Instalando ColorLS..."
-sudo gem install colorls
+echo "🌈 Verificando se é possível instalar ColorLS..."
+ruby_version=$(ruby -e 'puts RUBY_VERSION')
+required_version="3.0.0"
+
+if [ "$(printf '%s\n' "$required_version" "$ruby_version" | sort -V | head -n1)" = "$required_version" ]; then
+    echo "🌈 Instalando ColorLS..."
+    sudo gem install colorls
+else
+    echo "⚠️ Versão do Ruby ($ruby_version) é mais antiga que a necessária para ColorLS (3.0.0+)"
+    echo "⚠️ ColorLS não será instalado automaticamente"
+    echo "ℹ️ Para instalar ColorLS no futuro, atualize o Ruby para a versão 3.0.0 ou superior e depois execute: sudo gem install colorls"
+fi
 
 # Adicionado Chaves de Autenticação
 echo "💻 Adicionado Chaves de Autenticação..."
