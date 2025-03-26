@@ -1,0 +1,194 @@
+#!/usr/bin/php -q
+<?php
+/**
+ * propolys-tts.agi
+ *
+ * Script AGI para TTS usando ElevenLabs e cache em Redis.
+ * Recebe o caminho de um arquivo temporário em $argv[1], lê o texto completo
+ * (com acentos, espaços etc.), e gera áudio via ElevenLabs.
+ *
+ * Pré-requisitos:
+ *   - php-curl, php-redis, sox, libsox-fmt-mp3 instalados
+ *   - Redis rodando
+ *   - Chave de API ElevenLabs
+ */
+
+require_once "phpagi.php";
+
+// ----------------------------------------------------------------------------
+// CONFIGURAÇÕES DO ELEVENLABS
+// ----------------------------------------------------------------------------
+$voiceId = '21m00Tcm4TlvDq8ikWAM'; // Ajuste para a voz desejada
+$apiKey  = 'sk_7be2d73b3f82bc7522ba86ac1244fcf212be64f2a853585b'; // Sua chave ElevenLabs
+
+// ----------------------------------------------------------------------------
+// INICIALIZA AGI
+// ----------------------------------------------------------------------------
+$AGI = new AGI();
+debug("TTS AGI Started", 1);
+
+// ----------------------------------------------------------------------------
+// LÊ O ARQUIVO TEMPORÁRIO COM O TEXTO
+// ----------------------------------------------------------------------------
+$tmpfile = $argv[1] ?? '';
+if (!file_exists($tmpfile)) {
+    debug("ERRO: Arquivo de texto '$tmpfile' não existe!", 1);
+    exit(1);
+}
+
+$text = file_get_contents($tmpfile);
+
+// Converte entidades HTML para caracteres (ex: &aacute; -> á)
+$text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+debug("Texto final: $text", 1);
+
+// Se o texto estiver vazio, encerra
+if (trim($text) === '') {
+    debug("Texto vazio! Encerrando...", 1);
+    exit(1);
+}
+
+// ----------------------------------------------------------------------------
+// LÊ CONFIG DO AMPORTAL (p/ achar sounds dir) e DETECTA FORMATO
+// ----------------------------------------------------------------------------
+$config = parse_amportal_conf("/etc/amportal.conf");
+$f = $AGI->get_full_variable('${CHANNEL(audionativeformat)}');
+$nformat = $f['data'];
+$format = detect_format($nformat);
+
+// ----------------------------------------------------------------------------
+// CAMINHOS DOS ARQUIVOS
+// ----------------------------------------------------------------------------
+$soundsdir = $config["ASTVARLIBDIR"] . "/sounds/tts";
+if (!is_dir($soundsdir)) {
+    mkdir($soundsdir, 0775, true);
+}
+
+$hash = md5($text);
+$wavefile = "$soundsdir/elevenlabs-tts-$hash." . $format['ext'];
+$tmpwavefile = "$soundsdir/elevenlabs-tts-temp-$hash.mp3";
+$textfile = "$soundsdir/elevenlabs-tts-$hash.txt";
+
+debug("Generated WAV file: $wavefile", 3);
+debug("TXT file: $textfile", 3);
+
+// ----------------------------------------------------------------------------
+// INICIALIZA REDIS
+// ----------------------------------------------------------------------------
+$redis = new Redis();
+$redis->connect('127.0.0.1');
+
+// verifica se conectou
+if (!$redis->ping()) {
+    debug("Erro ao conectar ao Redis", 1);
+    exit(1);
+}
+
+// ----------------------------------------------------------------------------
+// VERIFICA SE EXISTE NO CACHE
+// ----------------------------------------------------------------------------
+if ($redis->exists($hash)) {
+    debug("Cache hit para: $text", 1);
+} else {
+    debug("Cache miss. Requisitando à ElevenLabs...", 1);
+
+    // ----------------------------------------------------------------------------
+    // CHAMADA À API ELEVENLABS
+    // ----------------------------------------------------------------------------
+    $url = "https://api.elevenlabs.io/v1/text-to-speech/$voiceId";
+    $postData = [
+        'text'       => $text,
+        'model_id'   => 'eleven_multilingual_v2',
+        'voice_settings' => [
+            'stability'        => 0.5,
+            'similarity_boost' => 0.5
+        ]
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            "xi-api-key: $apiKey",
+            "Content-Type: application/json",
+            "Accept: audio/mpeg"
+        ],
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($postData)
+    ]);
+
+    $audio = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!$audio || strlen($audio) < 1000 || $httpCode !== 200) {
+        debug("Erro ao obter áudio da ElevenLabs. HTTP: $httpCode, bytes: ".strlen($audio), 1);
+        file_put_contents('/tmp/tts_error_response.txt', $audio);
+        exit(1);
+    }
+
+    // ----------------------------------------------------------------------------
+    // SALVA MP3 TEMP E CONVERTE PARA .SLN
+    // ----------------------------------------------------------------------------
+    file_put_contents($tmpwavefile, $audio);
+    exec("sox $tmpwavefile -q -r " . $format['rate'] . " -t raw $wavefile");
+
+    if (file_exists($wavefile)) {
+        $redis->set($hash, $wavefile);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// REPRODUZ O ÁUDIO
+// ----------------------------------------------------------------------------
+if (file_exists($wavefile)) {
+    $AGI->wait_for_digit(500);
+    debug("Reproduzindo áudio gerado", 1);
+    $AGI->stream_file("tts/" . basename($wavefile, "." . $format['ext']), '#');
+} else {
+    debug("Falha ao criar o arquivo de áudio!", 1);
+}
+
+debug("TTS AGI finalizado", 1);
+
+// =============================================================================
+// FUNÇÕES AUXILIARES
+// =============================================================================
+
+function detect_format($nformat) {
+    switch (true) {
+        case preg_match('/(silk|sln)12/', $nformat):
+            return ['ext' => 'sln12', 'rate' => '12000'];
+        case preg_match('/(speex|slin|silk)16|g722|siren7/', $nformat):
+            return ['ext' => 'sln16', 'rate' => '16000'];
+        case preg_match('/(speex|slin|celt)32|siren14/', $nformat):
+            return ['ext' => 'sln32', 'rate' => '32000'];
+        case preg_match('/(celt|slin)44/', $nformat):
+            return ['ext' => 'sln44', 'rate' => '44000'];
+        case preg_match('/(celt|slin)48/', $nformat):
+            return ['ext' => 'sln48', 'rate' => '48000'];
+        default:
+            return ['ext' => 'sln', 'rate' => '8000'];
+    }
+}
+
+function parse_amportal_conf($filename) {
+    $file = @file($filename) ?: [];
+    $conf = [];
+    foreach ($file as $line) {
+        if (preg_match('/^\s*([a-zA-Z0-9_]+)\s*=\s*(.*)\s*([;#].*)?/', $line, $matches)) {
+            $conf[$matches[1]] = $matches[2];
+        }
+    }
+    // fallback se não achar ASTVARLIBDIR
+    if (empty($conf['ASTVARLIBDIR'])) {
+        $conf['ASTVARLIBDIR'] = '/var/lib/asterisk';
+    }
+    return $conf;
+}
+
+function debug($string, $level = 3) {
+    global $AGI;
+    $AGI->verbose($string, $level);
+}

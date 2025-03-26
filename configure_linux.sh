@@ -1,0 +1,114 @@
+#!/bin/bash
+
+set -e
+
+echo "🔄 Removendo pacotes conflitantes..."
+for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
+    sudo apt-get remove -y "$pkg" || true
+done
+
+# Configurar timezone
+echo "🌎 Configurando timezone para America/Sao_Paulo..."
+sudo timedatectl set-timezone America/Sao_Paulo
+
+# Atualizar pacotes e instalar dependências essenciais
+echo "📦 Atualizando pacotes e instalando dependências..."
+sudo apt update && sudo apt install -y \
+    ca-certificates curl iputils-ping traceroute btop zsh python3-pip coreutils vim gawk moreutils unzip git ruby ruby-dev
+
+# Configurar repositório oficial do Docker
+echo "🐳 Adicionando repositório oficial do Docker..."
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Instalar Docker e plugins
+echo "🐳 Instalando Docker e plugins..."
+sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Instalar Docker Compose manualmente
+echo "🐳 Instalando Docker Compose..."
+curl -SL https://github.com/docker/compose/releases/download/v2.34.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Instalar e configurar Zsh sem iniciar automaticamente
+echo "💻 Instalando e configurando Zsh..."
+sudo chsh -s $(which zsh) $(whoami)
+
+if [ -d "$HOME/.oh-my-zsh" ]; then
+    echo "🚀 Oh My Zsh já está instalado. Removendo e reinstalando..."
+    rm -rf "$HOME/.oh-my-zsh"
+fi
+
+echo "⏳ Instalando Oh My Zsh..."
+RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+
+# Instalar temas e plugins do Zsh
+echo "🎨 Instalando Powerlevel10k..."
+git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.oh-my-zsh/custom/themes/powerlevel10k
+
+echo "🎨 Instalando Zsh Syntax Highlighting e Autosuggestions..."
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+git clone https://github.com/zsh-users/zsh-autosuggestions.git ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+
+# Instalar plugins adicionais do Oh My Zsh
+echo "🔌 Instalando plugins adicionais do Oh My Zsh..."
+mkdir -p ~/.oh-my-zsh/custom/plugins
+for plugin in git composer z docker docker-compose docker-machine jump sudo; do
+    if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/$plugin" ]; then
+        echo "📥 Baixando plugin: $plugin"
+        git clone "https://github.com/ohmyzsh/ohmyzsh.git" --depth=1 ~/.oh-my-zsh/custom/plugins/$plugin
+    fi
+done
+
+# Instalar TheFuck corretamente com pipx
+echo "🤦 Instalando TheFuck..."
+sudo apt install -y pipx
+pipx ensurepath
+pipx install thefuck
+
+# Instalar ColorLS via RubyGems
+echo "🌈 Instalando ColorLS..."
+sudo gem install colorls
+
+# Adicionado Chaves de Autenticação
+echo "💻 Adicionado Chaves de Autenticação..."
+cat <<EOL > ~/.ssh/authorized_keys
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDjLGbe8A9uF2GGbwrE2DxLMGWblJKBXV+NoopaELzxluUqaw92ow4t2or6VFf0Ls0ez9sC17QdfX+7Qu18FeJKChihjVmlKjLSX5rfLvjzY8jzr61RNWszEfpHIl5YhrbblfkpEgJ1RmqTNQNjDJj4e+0i/+dHlY1ogxb7wnOidNVOhOrhymOLIRxtlk8n4sxIwRSl2fGwyC07I89MS69HOs0nFe/Zhb8L5z4RM6OZNr4spwBTt8i8Mb/5KAxFgyuiGSMqziBhUymCYMLnwHdQYYzma7iNegv14e6QMilEYl28fkoNF2uNdRifdk7wkV1LTIXsBWDz6oPSR+9y6q8DODFsoNTmCW/Hv6uaUK5twtB//XpC6GIXQvDFzgieKUnFYqVnltwah+VBuGEF8pBX63AKXyRmBQDYUsgDBPKqlzhPDbf998v5n0XNgx8Fhy55mC39njo7iYHMsS5LLzZPsOeUhdxylNhezTA3ovYbSvdlsYqMux196xQFJPx8bbU= root@ADV-AZ-SRV01
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDE7x+8n8pd5IADfox5kS3KChhWsQbXjmBRrJCes+zDJfOtGtLBthu/oIKe7kMQRWmL4GwGNTw7bk6/qzfLGAtY9aujDziNz8dE5UprSKKOAT+NdVABQSEMUGP/VGegmS0sW9AOcS+xc55nZ6yd4IptknTUN/KVvbp1dbjddFrJRlRmDZScIpl6sE/PJvpfuaeMQeZPG8UW4OPQqIlDFYoNV3fb4powVi3DR4NaFJ7XyXXqIkDpL1yd6kKodHaqIRq5sES9o2Rjy2Ml1dPQFam7h1eMtZk/3/LSUUCHDmaLhRhhznUhj4FUwqcWkyhLMzxeKElIUqt1g7W5Znshl5OF6e20pALUlxSoqUU3OCWuahLhwM6qCBj/1zJBTwXEJTddHhG100XWhdgHRZzv/iMH9KzCZnpbZXcsBQnWyt76G5Q1Ago0FzlSJi3SPFXpoDWlh1uG3InvNIZpILg2j5zWSujkCuzzHeqJns1LpzPNw1aGtIm+mJnRIGE09tzZe9k= hurbybr@MAQUEN
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCelwm/MQfLfbFEgenth32D72dCswd7nNCDH9HfUuD6PQXu9cJbIZkyU+6zkVu+j001gp8ws1hdt+H58N2yvnApcNaJHdse+urrin+zKW7TFyyaURjYmd8nqwdoe5pdmcWOEtiSXdizTHUaXZqhMshPxwPs1KHVEZJd2ERopd+ebXEwkhrYbI1vZXoD59FRv51NvkI0QC4i/IchiDTSkOF7SmGz40RJE1sWhk83JvSHpr8GmQ1rOGgcPRE+WvHYH8YDKZV+e4WAzkpdj9Mo3cT9/X2qb9RJX+tbMvNbg4FkTSp/rQRvFCpAvcVr1MfYDQYcNbDuHprlT5XnLb/Toa8P hurby@MAQUEN
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDBxczQsEDiKQ6/COlSBFZyebgioSiOjT5QaIEzWTrpS6IpySbi3pfM3jKN7PUKo8EVTns4vDPw0N+AIYdfe3vyuFU85aQ8Vq0mBRqgIJsicDxOcUF4SpA0EaKgu8G7APb94jijeqkWTPeQPIlElbLJnEOlw4QDu+oPIQdkvq+KyZsNGECnHlwPWd1/74QEb9FeE63c5WEDa4NtqAf4WjbcEZd5GQhKNkDBXf+X4/qXo7sw6ymNF8AruB4EpyoEQsXODhdivAOB3nw1g2iUkBGNStSOy5fvHwGttQXxZfu/1xYMbAwQRQlZD8jsvqMr9LnmLOSnFlxZsYR7AdWzgk995DL1hVuQc/HykjoD8C1YQLEx1puPXtEq3Hh6gAWDh5aPqZIMmBwTftBgnhnqLlV/EdR0NscuaZTTWqQqz3hfSkyDA7e+jhqVWpQKIaOIyynS5sDNZmyTcvHRGnKVRRqm+w3VciKjfaPh1063T/2ONqB9ofcAxJPZRpFRsBCI/nM= hurby@MAQUEN
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGgxIjRNIan6vPfB+HdspAHcOko+cRKTeXoLXFSjIES7H15bd+VSvHgIGRQ5Aw8jdbzTSFMmESj/YEb6kfoDUxPY4XvTZhT++p3KHtBY/DpbYKaZz3DDMqjODfmZoCvPXDPpO8bn8JagM5QOsG4Bn8BIU+7JwJ/G3z4tVfsuZWxsnDSvUv3QwdI+KksQ/AL8105pdMWVGIdPKjxbVMfZadvFV9qU+W88eFedxKHBD/qz/9DhRqA0jKVZ590bLhObGAQjtQy9vm7F+D6m1WE7WJLJ2BrAvzrRJJ8cGM5BIlDg8I+0ZSLxT9fcEL3ka2D8eAcSSZPEYgMgBUgUH9o7B45eH8+pUOowDoiJ9lXb/rKygMUkYRIj5AjaIOMLz2ZAbCaCDEYbTDFvr1Gdr+vLhtbqCS0ZEUvPXeQBq62Rtu9doaPVjNJ2mbSjrgcW+LA/gyoD2eKT9yvOgkgX+s7CEgp9jPo2oXPcLFD+h6cVEQOyXYVanpHBv3IZG8vOjxEeU= ealcay@MacBook-Air-Eduardo.local
+EOL
+
+# Criar arquivo de configuração do Powerlevel10k
+echo "⚙️ Criando configuração padrão do Powerlevel10k..."
+cat <<EOL > ~/.p10k.zsh
+# Configuração básica do Powerlevel10k
+POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
+POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status root_indicator background_jobs time)
+POWERLEVEL9K_MODE="nerdfont-complete"
+POWERLEVEL9K_TIME_FORMAT="%D{%H:%M:%S}"
+POWERLEVEL9K_PROMPT_ON_NEWLINE=true
+POWERLEVEL9K_MULTILINE_FIRST_PROMPT_PREFIX="%F{cyan}╭─%f"
+POWERLEVEL9K_MULTILINE_LAST_PROMPT_PREFIX="%F{cyan}╰─▶%f"
+EOL
+
+# Adicionar corretamente o PATH no Zsh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+
+# Configurar Oh My Zsh corretamente
+echo "🛠️ Configurando Oh My Zsh com plugins e tema Powerlevel10k..."
+echo 'ZSH_THEME="powerlevel10k/powerlevel10k"' >> ~/.zshrc
+echo "[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh" >> ~/.zshrc
+echo "plugins=(git composer z zsh-autosuggestions zsh-syntax-highlighting docker docker-compose docker-machine jump sudo)" >> ~/.zshrc
+echo "source ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" >> ~/.zshrc
+echo "source ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" >> ~/.zshrc
+echo "source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme" >> ~/.zshrc
+
+# Mensagem final para o usuário
+echo -e "\n✅ Configuração concluída!"
+echo -e "👉 Para aplicar as mudanças, execute:\n"
+echo -e "   exec zsh\n"
