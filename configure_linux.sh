@@ -34,7 +34,7 @@ sudo timedatectl set-timezone America/Sao_Paulo
 # Atualizar pacotes e instalar dependências essenciais
 echo "📦 Atualizando pacotes e instalando dependências..."
 sudo apt update && sudo apt install -y \
-    ca-certificates curl python3.8-venv iputils-ping traceroute zsh python3-pip coreutils vim gawk moreutils unzip git ruby ruby-dev
+    ca-certificates curl python3-venv iputils-ping net-tools traceroute zsh python3-pip coreutils vim gawk moreutils unzip git ruby ruby-dev
 
 sudo apt-get install -y btop || true
 
