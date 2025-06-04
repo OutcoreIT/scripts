@@ -1,4 +1,13 @@
-$clienteTag = "OutCore"
+param (
+    [string]$clienteTag
+)
+
+if ([string]::IsNullOrWhiteSpace($clienteTag)) {
+    Write-Host "❌ Parâmetro 'clienteTag' é obrigatório. Execute com: -clienteTag 'NOME_DO_CLIENTE'"
+    exit 1
+}
+
+
 
 # Força TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
