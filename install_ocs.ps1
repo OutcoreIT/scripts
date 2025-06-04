@@ -7,8 +7,6 @@ if ([string]::IsNullOrWhiteSpace($clienteTag)) {
     exit 1
 }
 
-
-
 # Força TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
