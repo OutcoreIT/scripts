@@ -123,14 +123,35 @@ EOL
 # Criar arquivo de configuração do Powerlevel10k
 echo "⚙️ Criando configuração padrão do Powerlevel10k..."
 cat <<EOL > ~/.p10k.zsh
-# Configuração básica do Powerlevel10k
-POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
-POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status root_indicator background_jobs time)
-POWERLEVEL9K_MODE="nerdfont-complete"
-POWERLEVEL9K_TIME_FORMAT="%D{%H:%M:%S}"
-POWERLEVEL9K_PROMPT_ON_NEWLINE=true
-POWERLEVEL9K_MULTILINE_FIRST_PROMPT_PREFIX="%F{cyan}╭─%f"
-POWERLEVEL9K_MULTILINE_LAST_PROMPT_PREFIX="%F{cyan}╰─▶%f"
+# Mostrar diretório atual (azul claro)
+typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir vcs prompt_char)
+
+# Mostrar status (exit code) e tempo de execução no canto direito
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status command_execution_time background_jobs)
+
+# Usar Nerd Font (pode trocar para unicode se quiser)
+typeset -g POWERLEVEL9K_MODE=nerdfont-complete
+
+# Simplicidade extrema:
+typeset -g POWERLEVEL9K_BACKGROUND=
+typeset -g POWERLEVEL9K_LEFT_SEGMENT_SEPARATOR=
+typeset -g POWERLEVEL9K_RIGHT_SEGMENT_SEPARATOR=
+typeset -g POWERLEVEL9K_LEFT_SUBSEGMENT_SEPARATOR=' '
+typeset -g POWERLEVEL9K_RIGHT_SUBSEGMENT_SEPARATOR=' '
+typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=false
+
+# Cores principais:
+typeset -g POWERLEVEL9K_DIR_FOREGROUND=4
+typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_FOREGROUND=2
+typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_FOREGROUND=1
+
+# Símbolos de prompt (❯ para ok, ❮ para vi-mode, etc.)
+typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_VIINS_CONTENT_EXPANSION='%(!.#.❯)'
+typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_VIINS_CONTENT_EXPANSION='%(!.#.❯)'
+
+# Remove ícones e extras:
+typeset -g POWERLEVEL9K_VCS_BRANCH_ICON=
+typeset -g POWERLEVEL9K_VCS_VISUAL_IDENTIFIER_EXPANSION=
 EOL
 
 # Adicionar corretamente o PATH no Zsh
