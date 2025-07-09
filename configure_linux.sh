@@ -123,35 +123,53 @@ EOL
 # Criar arquivo de configuração do Powerlevel10k
 echo "⚙️ Criando configuração padrão do Powerlevel10k..."
 cat <<EOL > ~/.p10k.zsh
-# Mostrar diretório atual (azul claro)
-typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir vcs prompt_char)
+# Minimalista: apenas usuário@host, diretório e prompt char
+typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir prompt_char)
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=()
 
-# Mostrar status (exit code) e tempo de execução no canto direito
-typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status command_execution_time background_jobs)
+# Mostra usuário@hostname sempre
+typeset -g POWERLEVEL9K_CONTEXT_TEMPLATE='%n@%m'
+typeset -g POWERLEVEL9K_CONTEXT_FOREGROUND=7  # Branco
+typeset -g POWERLEVEL9K_CONTEXT_ROOT_FOREGROUND=7
+typeset -g POWERLEVEL9K_CONTEXT_REMOTE_FOREGROUND=7
+typeset -g POWERLEVEL9K_CONTEXT_REMOTE_SUDO_FOREGROUND=7
 
-# Usar Nerd Font (pode trocar para unicode se quiser)
-typeset -g POWERLEVEL9K_MODE=nerdfont-complete
+# Mostra diretório atual, branco
+typeset -g POWERLEVEL9K_DIR_FOREGROUND=7
+typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND=7
+typeset -g POWERLEVEL9K_DIR_SHORTENED_FOREGROUND=7
 
-# Simplicidade extrema:
-typeset -g POWERLEVEL9K_BACKGROUND=
-typeset -g POWERLEVEL9K_LEFT_SEGMENT_SEPARATOR=
-typeset -g POWERLEVEL9K_RIGHT_SEGMENT_SEPARATOR=
-typeset -g POWERLEVEL9K_LEFT_SUBSEGMENT_SEPARATOR=' '
-typeset -g POWERLEVEL9K_RIGHT_SUBSEGMENT_SEPARATOR=' '
-typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=false
+# Remove ícones e encurtamentos no diretório
+typeset -g POWERLEVEL9K_DIR_MAX_LENGTH=80
+typeset -g POWERLEVEL9K_SHORTEN_STRATEGY=none
 
-# Cores principais:
-typeset -g POWERLEVEL9K_DIR_FOREGROUND=4
-typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_FOREGROUND=2
-typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_FOREGROUND=1
-
-# Símbolos de prompt (❯ para ok, ❮ para vi-mode, etc.)
+# Mostra ❯ para usuários comuns e # para root
 typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_VIINS_CONTENT_EXPANSION='%(!.#.❯)'
 typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_VIINS_CONTENT_EXPANSION='%(!.#.❯)'
+typeset -g POWERLEVEL9K_PROMPT_CHAR_FOREGROUND=7
 
-# Remove ícones e extras:
-typeset -g POWERLEVEL9K_VCS_BRANCH_ICON=
-typeset -g POWERLEVEL9K_VCS_VISUAL_IDENTIFIER_EXPANSION=
+# Sem espaços ou separadores adicionais
+typeset -g POWERLEVEL9K_LEFT_PROMPT_FIRST_SEGMENT_START_SYMBOL=''
+typeset -g POWERLEVEL9K_LEFT_PROMPT_LAST_SEGMENT_END_SYMBOL=''
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_FIRST_SEGMENT_START_SYMBOL=''
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_LAST_SEGMENT_END_SYMBOL=''
+typeset -g POWERLEVEL9K_LEFT_SUBSEGMENT_SEPARATOR=''
+typeset -g POWERLEVEL9K_RIGHT_SUBSEGMENT_SEPARATOR=''
+typeset -g POWERLEVEL9K_MULTILINE_FIRST_PROMPT_PREFIX=''
+typeset -g POWERLEVEL9K_MULTILINE_LAST_PROMPT_PREFIX=''
+typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=false
+
+# Remove ícones no contexto
+typeset -g POWERLEVEL9K_CONTEXT_VISUAL_IDENTIFIER_EXPANSION=''
+
+# Deixa o fundo transparente
+typeset -g POWERLEVEL9K_BACKGROUND=
+
+# Desativa hot reload
+typeset -g POWERLEVEL9K_DISABLE_HOT_RELOAD=true
+
+# Finaliza carregamento
+(( ! $+functions[p10k] )) || p10k reload
 EOL
 
 # Adicionar corretamente o PATH no Zsh
