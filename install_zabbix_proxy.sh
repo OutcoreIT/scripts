@@ -177,9 +177,12 @@ services:
     container_name: zabbix-proxy
     restart: unless-stopped
     network_mode: host
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     environment:
       TZ: ${TZ}
-
       ZBX_PROXYMODE: 0
       ZBX_HOSTNAME: ${PROXY_NAME}
 
