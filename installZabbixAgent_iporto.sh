@@ -6,7 +6,7 @@ set -euo pipefail
 # Ubuntu 22/24 e Debian 11/12/13
 # =============================================================================
 
-ZABBIX_SERVER="monitoramento.iporto.net.br"
+ZABBIX_SERVER="zabbix.iporto.net.br"
 ZABBIX_HOST_META_DATA="linux"
 
 log_info() { echo "[INFO] $*"; }
