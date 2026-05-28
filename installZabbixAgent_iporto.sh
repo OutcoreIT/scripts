@@ -113,9 +113,7 @@ main() {
   check_root
   check_os
 
-  # Pergunta o nome do cliente
-  read -r -p "Digite o nome do cliente [Default: MCK]: " input_client
-  CLIENT_NAME="${input_client:-MCK}"
+  CLIENT_NAME="iPorto"
 
   # Obtém o hostname da máquina automaticamente
   local default_hostname
