@@ -10,7 +10,7 @@ ZABBIX_SERVER_HOST="${2:-zabbix.outcore.com.br}"
 ZABBIX_SERVER_PORT="${3:-10051}"
 
 STACK_DIR="/opt/zabbix-proxy"
-ZABBIX_VERSION="alpine-7.0-latest"
+ZABBIX_VERSION="alpine-7.4.10"
 TZ="America/Sao_Paulo"
 
 CONFIG_FREQUENCY="60"
@@ -20,6 +20,7 @@ PROXY_OFFLINE_BUFFER="72"
 CACHE_SIZE="256M"
 HISTORY_CACHE_SIZE="128M"
 TIMEOUT="10"
+DB_NAME="/var/lib/zabbix/zabbix_proxy.db"
 
 if [ -z "$PROXY_NAME" ]; then
   echo "Uso:"
@@ -166,6 +167,7 @@ PROXY_OFFLINE_BUFFER=${PROXY_OFFLINE_BUFFER}
 CACHE_SIZE=${CACHE_SIZE}
 HISTORY_CACHE_SIZE=${HISTORY_CACHE_SIZE}
 TIMEOUT=${TIMEOUT}
+DB_NAME=${DB_NAME}
 ENVEOF
 
 chmod 600 .env
@@ -185,6 +187,7 @@ services:
       TZ: ${TZ}
       ZBX_PROXYMODE: 0
       ZBX_HOSTNAME: ${PROXY_NAME}
+      ZBX_DB_NAME: ${DB_NAME}
 
       ZBX_SERVER_HOST: ${ZABBIX_SERVER_HOST}
       ZBX_SERVER_PORT: ${ZABBIX_SERVER_PORT}
