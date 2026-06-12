@@ -104,10 +104,25 @@ add_zabbix_repo() {
 }
 
 _rhel_pkg_mgr() {
+  load_os_info
+  local major_ver="${VERSION_ID%%.*}"
+  local skip_opt=""
+  if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && ("$major_ver" == "6" || "$major_ver" == "7") ]]; then
+    skip_opt="--setopt=*.skip_if_unavailable=1"
+  fi
+
   if command -v dnf &>/dev/null; then
-    dnf "$@"
+    if [[ -n "$skip_opt" ]]; then
+      dnf "$skip_opt" "$@"
+    else
+      dnf "$@"
+    fi
   else
-    yum "$@"
+    if [[ -n "$skip_opt" ]]; then
+      yum "$skip_opt" "$@"
+    else
+      yum "$@"
+    fi
   fi
 }
 
@@ -191,6 +206,91 @@ start_zabbix_agent() {
   fi
 }
 
+get_zabbix_server_ip() {
+  local host="$1"
+  if [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "$host"
+    return
+  fi
+
+  local ip=""
+  ip=$(getent hosts "$host" | awk '{print $1}' | head -n 1)
+  
+  if [[ -z "$ip" ]] && command -v nslookup &>/dev/null; then
+    ip=$(nslookup "$host" 2>/dev/null | awk '/^Address: / { print $2 }' | head -n 1)
+  fi
+
+  if [[ -z "$ip" ]]; then
+    if command -v python3 &>/dev/null; then
+      ip=$(python3 -c "import socket; print(socket.gethostbyname('$host'))" 2>/dev/null || true)
+    elif command -v python &>/dev/null; then
+      ip=$(python -c "import socket; print(socket.gethostbyname('$host'))" 2>/dev/null || true)
+    fi
+  fi
+
+  if [[ -z "$ip" ]]; then
+    ip=$(ping -c 1 -W 2 "$host" 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -n 1 || true)
+  fi
+
+  echo "$ip"
+}
+
+configure_iptables() {
+  if ! command -v iptables &>/dev/null; then
+    log_warn "iptables não encontrado. Pulando configuração do firewall."
+    return
+  fi
+
+  local zabbix_ip
+  zabbix_ip=$(get_zabbix_server_ip "$ZABBIX_SERVER")
+
+  if [[ -z "$zabbix_ip" ]]; then
+    log_warn "Não foi possível resolver o IP do Zabbix Server ($ZABBIX_SERVER). Pulando regras de firewall."
+    return
+  fi
+
+  log_info "Configurando regras de firewall para Zabbix Server IP: $zabbix_ip"
+
+  local has_out=0
+  local has_in=0
+
+  if command -v iptables-save &>/dev/null; then
+    local rules
+    rules=$(iptables-save)
+    if echo "$rules" | grep -F -- "-A OUTPUT -p tcp -d $zabbix_ip/32 --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" &>/dev/null || \
+       echo "$rules" | grep -F -- "-A OUTPUT -p tcp -d $zabbix_ip --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" &>/dev/null; then
+      has_out=1
+    fi
+    if echo "$rules" | grep -F -- "-A INPUT -p tcp -s $zabbix_ip/32 --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null || \
+       echo "$rules" | grep -F -- "-A INPUT -p tcp -s $zabbix_ip --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null; then
+      has_in=1
+    fi
+  fi
+
+  if [[ $has_out -eq 0 ]]; then
+    iptables -I OUTPUT -p tcp -d "$zabbix_ip" --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    log_info "Regra OUTPUT inserida para $zabbix_ip:10051"
+  else
+    log_info "Regra OUTPUT para $zabbix_ip:10051 já existe."
+  fi
+
+  if [[ $has_in -eq 0 ]]; then
+    iptables -I INPUT -p tcp -s "$zabbix_ip" --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+    log_info "Regra INPUT inserida para $zabbix_ip:10051"
+  else
+    log_info "Regra INPUT para $zabbix_ip:10051 já existe."
+  fi
+
+  # Salvar regras
+  if command -v service &>/dev/null && service iptables status &>/dev/null; then
+    service iptables save || true
+  elif command -v iptables-save &>/dev/null; then
+    if [[ -d /etc/iptables ]]; then
+      iptables-save > /etc/iptables/rules.v4 || true
+    fi
+  fi
+}
+
 main() {
   check_root
   check_os
@@ -233,6 +333,7 @@ main() {
   fi
   configure_zabbix_agent
   start_zabbix_agent
+  configure_iptables
 
   log_info "Concluído: Instalação e configuração do Zabbix Agent."
 }
