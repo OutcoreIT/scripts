@@ -13,15 +13,31 @@ log_info() { echo "[INFO] $*"; }
 log_warn() { echo "[WARN] $*"; }
 log_error() { echo "[ERRO] $*" >&2; }
 
-detect_os() {
+ID=""
+VERSION_ID=""
+
+load_os_info() {
+  if [[ -n "${ID:-}" ]]; then
+    return
+  fi
   if [[ -f /etc/os-release ]]; then
     # shellcheck source=/dev/null
     source /etc/os-release
-    echo "${ID,,}"
+  elif [[ -f /etc/centos-release ]]; then
+    ID="centos"
+    VERSION_ID=$(sed -n -e 's/^.*release \([0-9.]*\).*$/\1/p' /etc/centos-release)
+  elif [[ -f /etc/redhat-release ]]; then
+    ID="rhel"
+    VERSION_ID=$(sed -n -e 's/^.*release \([0-9.]*\).*$/\1/p' /etc/redhat-release)
   else
     log_error "Não foi possível detectar o sistema operacional."
     exit 1
   fi
+}
+
+detect_os() {
+  load_os_info
+  echo "${ID,,}"
 }
 
 check_os() {
@@ -48,8 +64,7 @@ check_root() {
 add_zabbix_repo() {
   local os pkg_url zabbix_ver version_id major_ver
 
-  # shellcheck source=/dev/null
-  source /etc/os-release
+  load_os_info
 
   os="${ID,,}"
   version_id="${VERSION_ID}"
@@ -76,7 +91,7 @@ add_zabbix_repo() {
       apt-get update -qq
       ;;
     centos|rhel|almalinux|rocky|ol)
-      _fix_centos7_vault
+      _fix_centos_vault
       pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/rhel/${major_ver}/x86_64/zabbix-release-${zabbix_ver}-1.el${major_ver}.noarch.rpm"
       rpm -Uvh "$pkg_url" || true
       _rhel_pkg_mgr clean all
@@ -96,36 +111,57 @@ _rhel_pkg_mgr() {
   fi
 }
 
-# CentOS 7 reached EOL — mirrorlist.centos.org is gone; redirect to vault.
-_fix_centos7_vault() {
+# CentOS 6/7 reached EOL — mirrorlist.centos.org is gone; redirect to vault.
+_fix_centos_vault() {
   local major_ver
-  source /etc/os-release
+  load_os_info
   major_ver="${VERSION_ID%%.*}"
-  if [[ "${ID,,}" == "centos" && "$major_ver" == "7" ]]; then
-    log_info "CentOS 7 EOL detectado. Atualizando repos para vault.centos.org..."
-    sed -i \
-      -e 's|^mirrorlist=|#mirrorlist=|' \
-      -e 's|^#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|' \
-      /etc/yum.repos.d/CentOS-*.repo
+  if [[ "${ID,,}" == "centos" ]]; then
+    if [[ "$major_ver" == "7" ]]; then
+      log_info "CentOS 7 EOL detectado. Atualizando repos para vault.centos.org..."
+      sed -i \
+        -e 's|^mirrorlist=|#mirrorlist=|' \
+        -e 's|^#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|' \
+        -e 's|^baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|' \
+        /etc/yum.repos.d/CentOS-*.repo
+    elif [[ "$major_ver" == "6" ]]; then
+      log_info "CentOS 6 EOL detectado. Atualizando repos para vault.centos.org..."
+      sed -i \
+        -e 's|^mirrorlist=|#mirrorlist=|' \
+        -e 's|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=http://vault.centos.org/centos/6.10|' \
+        -e 's|^baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=http://vault.centos.org/centos/6.10|' \
+        -e 's|^#baseurl=http://mirror.centos.org/centos|baseurl=http://vault.centos.org/centos|' \
+        -e 's|^baseurl=http://mirror.centos.org/centos|baseurl=http://vault.centos.org/centos|' \
+        /etc/yum.repos.d/CentOS-*.repo
+    fi
   fi
 }
 
 install_zabbix_agent() {
-  # shellcheck source=/dev/null
-  source /etc/os-release
+  load_os_info
   local os="${ID,,}"
+  local major_ver="${VERSION_ID%%.*}"
   case "$os" in
     ubuntu|debian)
       apt-get install -y zabbix-agent2
       ;;
     centos|rhel|almalinux|rocky|ol)
-      _rhel_pkg_mgr install -y zabbix-agent2
+      if [[ "$major_ver" == "6" ]]; then
+        _rhel_pkg_mgr install -y zabbix-agent
+      else
+        _rhel_pkg_mgr install -y zabbix-agent2
+      fi
       ;;
   esac
 }
 
 configure_zabbix_agent() {
+  load_os_info
+  local major_ver="${VERSION_ID%%.*}"
   local conf="/etc/zabbix/zabbix_agent2.conf"
+  if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && "$major_ver" == "6" ]]; then
+    conf="/etc/zabbix/zabbix_agentd.conf"
+  fi
 
   if [[ -f "$conf" ]]; then
     cp "$conf" "${conf}.bak"
@@ -144,8 +180,15 @@ configure_zabbix_agent() {
 }
 
 start_zabbix_agent() {
-  systemctl restart zabbix-agent2
-  systemctl enable zabbix-agent2
+  load_os_info
+  local major_ver="${VERSION_ID%%.*}"
+  if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && "$major_ver" == "6" ]]; then
+    service zabbix-agent restart
+    chkconfig zabbix-agent on
+  else
+    systemctl restart zabbix-agent2
+    systemctl enable zabbix-agent2
+  fi
 }
 
 main() {
@@ -165,8 +208,25 @@ main() {
 
   [[ -z "$ZABBIX_SERVER" ]] && { log_error "ZABBIX_SERVER não informado."; exit 1; }
 
-  if command -v zabbix_agent2 &>/dev/null || [[ -f /etc/zabbix/zabbix_agent2.conf ]]; then
-    log_info "Zabbix Agent 2 já instalado. Atualizando configuração."
+  load_os_info
+  local has_agent=0
+  local major_ver="${VERSION_ID%%.*}"
+  if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && "$major_ver" == "6" ]]; then
+    if command -v zabbix_agentd &>/dev/null || [[ -f /etc/zabbix/zabbix_agentd.conf ]]; then
+      has_agent=1
+    fi
+  else
+    if command -v zabbix_agent2 &>/dev/null || [[ -f /etc/zabbix/zabbix_agent2.conf ]]; then
+      has_agent=1
+    fi
+  fi
+
+  if [[ $has_agent -eq 1 ]]; then
+    if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && "$major_ver" == "6" ]]; then
+      log_info "Zabbix Agent já instalado. Atualizando configuração."
+    else
+      log_info "Zabbix Agent 2 já instalado. Atualizando configuração."
+    fi
   else
     add_zabbix_repo
     install_zabbix_agent
