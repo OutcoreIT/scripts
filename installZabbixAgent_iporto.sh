@@ -8,6 +8,7 @@ set -euo pipefail
 
 ZABBIX_SERVER="zabbix.iporto.net.br"
 ZABBIX_HOST_META_DATA="linux"
+ZABBIX_PROXY_IP=""
 
 log_info() { echo "[INFO] $*"; }
 log_warn() { echo "[WARN] $*"; }
@@ -214,23 +215,60 @@ configure_zabbix_agent() {
   load_os_info
   local major_ver="${VERSION_ID%%.*}"
   local conf="/etc/zabbix/zabbix_agent2.conf"
+  local is_agentd=0
   if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && "$major_ver" == "6" ]]; then
     conf="/etc/zabbix/zabbix_agentd.conf"
+    is_agentd=1
   fi
 
+  # Backup da configuração existente se houver
   if [[ -f "$conf" ]]; then
+    log_info "Fazendo backup da configuração existente em ${conf}.bak"
     cp "$conf" "${conf}.bak"
-    sed -i "s/^Server=127.0.0.1/Server=${ZABBIX_SERVER}/" "$conf"
-    sed -i "s/^ServerActive=127.0.0.1/ServerActive=${ZABBIX_SERVER}/" "$conf"
-    sed -i "s|^[#[:space:]]*HostMetadata\(Item\)\?=.*|HostMetadata=${ZABBIX_HOST_META_DATA}|" "$conf"
+  fi
 
-    if grep -q '^Hostname=' "$conf"; then
-      sed -i "s/^Hostname=.*/Hostname=${ZABBIX_HOST_NAME}/" "$conf"
-    else
-      echo "Hostname=${ZABBIX_HOST_NAME}" >> "$conf"
-    fi
+  log_info "Escrevendo nova configuração do Zabbix Agent..."
+
+  local servers="${ZABBIX_SERVER}"
+  if [[ -n "${ZABBIX_PROXY_IP:-}" ]]; then
+    servers="${ZABBIX_SERVER},${ZABBIX_PROXY_IP}"
+  fi
+
+  # Garante que o diretório pai existe
+  mkdir -p "$(dirname "$conf")"
+
+  if [[ $is_agentd -eq 1 ]]; then
+    # Configuração do Zabbix Agentd (v1) para CentOS/RHEL 6
+    cat > "$conf" <<EOF
+PidFile=/var/run/zabbix/zabbix_agentd.pid
+LogFile=/var/log/zabbix/zabbix_agentd.log
+LogFileSize=10
+
+Server=${servers}
+ServerActive=${servers}
+Hostname=${ZABBIX_HOST_NAME}
+HostMetadata=${ZABBIX_HOST_META_DATA}
+
+Include=/etc/zabbix/zabbix_agentd.d/*.conf
+EOF
   else
-    log_error "Arquivo de configuração ${conf} não encontrado."
+    # Configuração do Zabbix Agent 2
+    cat > "$conf" <<EOF
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=10
+
+Server=${servers}
+ServerActive=${servers}
+Hostname=${ZABBIX_HOST_NAME}
+HostMetadata=${ZABBIX_HOST_META_DATA}
+
+PluginSocket=/run/zabbix/agent.plugin.sock
+ControlSocket=/run/zabbix/agent.sock
+
+Include=/etc/zabbix/zabbix_agent2.d/plugins.d/*.conf
+Include=/etc/zabbix/zabbix_agent2.d/*.conf
+EOF
   fi
 }
 
@@ -281,6 +319,43 @@ get_zabbix_server_ip() {
   echo "$ip"
 }
 
+add_iptables_rules_for_ip() {
+  local ip="$1"
+  local name="$2"
+
+  log_info "Configurando regras de firewall para $name IP: $ip"
+
+  local has_out=0
+  local has_in=0
+
+  if command -v iptables-save &>/dev/null; then
+    local rules
+    rules=$(iptables-save)
+    if echo "$rules" | grep -F -- "-A OUTPUT -p tcp -d $ip/32 --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" &>/dev/null || \
+       echo "$rules" | grep -F -- "-A OUTPUT -p tcp -d $ip --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" &>/dev/null; then
+      has_out=1
+    fi
+    if echo "$rules" | grep -F -- "-A INPUT -p tcp -s $ip/32 --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null || \
+       echo "$rules" | grep -F -- "-A INPUT -p tcp -s $ip --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null; then
+      has_in=1
+    fi
+  fi
+
+  if [[ $has_out -eq 0 ]]; then
+    iptables -I OUTPUT -p tcp -d "$ip" --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    log_info "Regra OUTPUT inserida para $ip:10051"
+  else
+    log_info "Regra OUTPUT para $ip:10051 já existe."
+  fi
+
+  if [[ $has_in -eq 0 ]]; then
+    iptables -I INPUT -p tcp -s "$ip" --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+    log_info "Regra INPUT inserida para $ip:10051"
+  else
+    log_info "Regra INPUT para $ip:10051 já existe."
+  fi
+}
+
 configure_iptables() {
   if ! command -v iptables &>/dev/null; then
     log_warn "iptables não encontrado. Pulando configuração do firewall."
@@ -290,41 +365,20 @@ configure_iptables() {
   local zabbix_ip
   zabbix_ip=$(get_zabbix_server_ip "$ZABBIX_SERVER")
 
-  if [[ -z "$zabbix_ip" ]]; then
-    log_warn "Não foi possível resolver o IP do Zabbix Server ($ZABBIX_SERVER). Pulando regras de firewall."
-    return
-  fi
-
-  log_info "Configurando regras de firewall para Zabbix Server IP: $zabbix_ip"
-
-  local has_out=0
-  local has_in=0
-
-  if command -v iptables-save &>/dev/null; then
-    local rules
-    rules=$(iptables-save)
-    if echo "$rules" | grep -F -- "-A OUTPUT -p tcp -d $zabbix_ip/32 --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" &>/dev/null || \
-       echo "$rules" | grep -F -- "-A OUTPUT -p tcp -d $zabbix_ip --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT" &>/dev/null; then
-      has_out=1
-    fi
-    if echo "$rules" | grep -F -- "-A INPUT -p tcp -s $zabbix_ip/32 --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null || \
-       echo "$rules" | grep -F -- "-A INPUT -p tcp -s $zabbix_ip --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null; then
-      has_in=1
-    fi
-  fi
-
-  if [[ $has_out -eq 0 ]]; then
-    iptables -I OUTPUT -p tcp -d "$zabbix_ip" --dport 10051 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-    log_info "Regra OUTPUT inserida para $zabbix_ip:10051"
+  if [[ -n "$zabbix_ip" ]]; then
+    add_iptables_rules_for_ip "$zabbix_ip" "Zabbix Server ($ZABBIX_SERVER)"
   else
-    log_info "Regra OUTPUT para $zabbix_ip:10051 já existe."
+    log_warn "Não foi possível resolver o IP do Zabbix Server ($ZABBIX_SERVER)."
   fi
 
-  if [[ $has_in -eq 0 ]]; then
-    iptables -I INPUT -p tcp -s "$zabbix_ip" --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT
-    log_info "Regra INPUT inserida para $zabbix_ip:10051"
-  else
-    log_info "Regra INPUT para $zabbix_ip:10051 já existe."
+  if [[ -n "${ZABBIX_PROXY_IP:-}" ]]; then
+    local proxy_ip
+    proxy_ip=$(get_zabbix_server_ip "$ZABBIX_PROXY_IP")
+    if [[ -n "$proxy_ip" ]]; then
+      add_iptables_rules_for_ip "$proxy_ip" "Zabbix Proxy ($ZABBIX_PROXY_IP)"
+    else
+      log_warn "Não foi possível resolver o IP do Zabbix Proxy ($ZABBIX_PROXY_IP)."
+    fi
   fi
 
   # Salvar regras
@@ -349,8 +403,15 @@ main() {
   read -r -p "Digite o hostname para o Zabbix Agent [Default: $default_hostname]: " input_hostname
   ZABBIX_HOST_NAME="${input_hostname:-$default_hostname}"
 
+  # Pergunta se existe um proxy
+  read -r -p "Digite o IP do proxy do Zabbix (deixe vazio se não houver): " input_proxy_ip
+  ZABBIX_PROXY_IP="${input_proxy_ip:-}"
+
   log_info "Cliente: ${CLIENT_NAME}"
   log_info "Hostname Zabbix: ${ZABBIX_HOST_NAME}"
+  if [[ -n "$ZABBIX_PROXY_IP" ]]; then
+    log_info "Proxy Zabbix: ${ZABBIX_PROXY_IP}"
+  fi
 
   [[ -z "$ZABBIX_SERVER" ]] && { log_error "ZABBIX_SERVER não informado."; exit 1; }
 
