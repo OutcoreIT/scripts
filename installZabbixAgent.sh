@@ -9,6 +9,8 @@ set -euo pipefail
 ZABBIX_SERVER="zabbix.outcore.com.br"
 ZABBIX_HOST_META_DATA="linux"
 
+ZABBIX_HOST_META_DATA="linux"
+
 log_info() { echo "[INFO] $*"; }
 log_warn() { echo "[WARN] $*"; }
 log_error() { echo "[ERRO] $*" >&2; }
@@ -197,6 +199,12 @@ configure_zabbix_agent() {
 start_zabbix_agent() {
   load_os_info
   local major_ver="${VERSION_ID%%.*}"
+
+  if getent group docker &>/dev/null; then
+    log_info "Adicionando o usuário zabbix ao grupo docker..."
+    usermod -aG docker zabbix || log_warn "Não foi possível adicionar o usuário zabbix ao grupo docker."
+  fi
+
   if [[ ("${ID,,}" == "centos" || "${ID,,}" == "rhel") && "$major_ver" == "6" ]]; then
     service zabbix-agent restart
     chkconfig zabbix-agent on
