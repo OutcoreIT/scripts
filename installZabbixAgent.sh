@@ -329,6 +329,7 @@ add_iptables_rules_for_ip() {
 
   local has_out=0
   local has_in=0
+  local has_in_10050=0
 
   if command -v iptables-save &>/dev/null; then
     local rules
@@ -340,6 +341,9 @@ add_iptables_rules_for_ip() {
     if echo "$rules" | grep -F -- "-A INPUT -p tcp -s $ip/32 --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null || \
        echo "$rules" | grep -F -- "-A INPUT -p tcp -s $ip --sport 10051 -m conntrack --ctstate ESTABLISHED -j ACCEPT" &>/dev/null; then
       has_in=1
+    fi
+    if echo "$rules" | grep -F -- "-s $ip" | grep -F -- "--dport 10050" &>/dev/null; then
+      has_in_10050=1
     fi
   fi
 
@@ -355,6 +359,18 @@ add_iptables_rules_for_ip() {
     log_info "Regra INPUT inserida para $ip:10051"
   else
     log_info "Regra INPUT para $ip:10051 já existe."
+  fi
+
+  if [[ $has_in_10050 -eq 0 ]]; then
+    iptables -I INPUT 1 \
+      -s "$ip" \
+      -p tcp \
+      --dport 10050 \
+      -m conntrack --ctstate NEW,ESTABLISHED \
+      -j ACCEPT
+    log_info "Regra INPUT 1 (liberação da porta 10050) inserida no início da cadeia para $ip"
+  else
+    log_info "Regra INPUT (liberação da porta 10050) para $ip já existe."
   fi
 }
 
