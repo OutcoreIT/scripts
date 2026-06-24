@@ -73,22 +73,62 @@ add_zabbix_repo() {
 
   case "$os" in
     ubuntu)
+      # Temporariamente desabilita o ESM hook para evitar falhas no apt update (comum em containers/WSL/sistemas mínimos)
+      local esm_hook="/etc/apt/apt.conf.d/20apt-esm-hook.conf"
+      local esm_hook_bak="${esm_hook}.bak"
+      if [[ -f "$esm_hook" ]]; then
+        log_info "Desabilitando temporariamente o ESM hook do APT..."
+        mv "$esm_hook" "$esm_hook_bak"
+      fi
+
+      # Garante que gnupg está instalado para evitar erros do apt-key em repositórios antigos
+      log_info "Instalando gnupg para compatibilidade de chaves GPG..."
+      apt-get update -qq || true
+      apt-get install -y gnupg || log_warn "Não foi possível instalar o pacote gnupg."
+
       pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/ubuntu/pool/main/z/zabbix-release/zabbix-release_${zabbix_ver}-2+ubuntu${version_id}_all.deb"
       local tmp_deb
       tmp_deb="$(mktemp).deb"
       curl -fsSL "$pkg_url" -o "$tmp_deb"
-      dpkg -i "$tmp_deb" || apt-get install -f -y
+
+      # Purga o pacote anterior para garantir que conffiles deletados (como o zabbix.list/zabbix.sources) sejam recriados
+      log_info "Removendo configurações anteriores do repositório Zabbix..."
+      dpkg -P zabbix-release || true
+
+      log_info "Instalando repositório do Zabbix..."
+      dpkg -i --force-confmiss "$tmp_deb" || apt-get install -f -y
       rm -f "$tmp_deb"
-      apt-get update -qq
+
+      log_info "Atualizando os repositórios APT..."
+      apt-get update -qq || log_warn "Aviso: apt-get update encontrou erros em repositórios secundários, prosseguindo com a instalação do agente."
+
+      # Restaura o ESM hook se foi desabilitado
+      if [[ -f "$esm_hook_bak" ]]; then
+        log_info "Restaurando o ESM hook do APT..."
+        mv "$esm_hook_bak" "$esm_hook"
+      fi
       ;;
     debian)
+      # Garante que gnupg está instalado
+      log_info "Instalando gnupg para compatibilidade de chaves GPG..."
+      apt-get update -qq || true
+      apt-get install -y gnupg || log_warn "Não foi possível instalar o pacote gnupg."
+
       pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/debian/pool/main/z/zabbix-release/zabbix-release_${zabbix_ver}-2+debian${version_id}_all.deb"
       local tmp_deb
       tmp_deb="$(mktemp).deb"
       curl -fsSL "$pkg_url" -o "$tmp_deb"
-      dpkg -i "$tmp_deb" || apt-get install -f -y
+
+      # Purga o pacote anterior para garantir que conffiles deletados sejam recriados
+      log_info "Removendo configurações anteriores do repositório Zabbix..."
+      dpkg -P zabbix-release || true
+
+      log_info "Instalando repositório do Zabbix..."
+      dpkg -i --force-confmiss "$tmp_deb" || apt-get install -f -y
       rm -f "$tmp_deb"
-      apt-get update -qq
+
+      log_info "Atualizando os repositórios APT..."
+      apt-get update -qq || log_warn "Aviso: apt-get update encontrou erros em repositórios secundários, prosseguindo com a instalação do agente."
       ;;
     centos|rhel|almalinux|rocky|ol)
       _fix_centos_vault
