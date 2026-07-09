@@ -16,6 +16,51 @@ log_info() { echo "[INFO] $*"; }
 log_warn() { echo "[WARN] $*"; }
 log_error() { echo "[ERRO] $*" >&2; }
 
+wait_for_dpkg_lock() {
+  local lock_files=("/var/lib/dpkg/lock" "/var/lib/dpkg/lock-frontend" "/var/cache/apt/archives/lock")
+  local locked=1
+  local count=0
+
+  while [[ $locked -ne 0 ]]; do
+    locked=0
+    for lock_file in "${lock_files[@]}"; do
+      if [[ -f "$lock_file" ]]; then
+        if command -v fuser &>/dev/null; then
+          if fuser "$lock_file" &>/dev/null; then
+            locked=1
+            break
+          fi
+        elif command -v lsof &>/dev/null; then
+          if lsof "$lock_file" &>/dev/null; then
+            locked=1
+            break
+          fi
+        else
+          if ! flock -n "$lock_file" true 2>/dev/null; then
+            locked=1
+            break
+          fi
+        fi
+      fi
+    done
+
+    if [[ $locked -eq 1 ]]; then
+      if [[ $count -eq 0 ]]; then
+        log_info "O APT/dpkg está bloqueado por outro processo (por exemplo, unattended-upgrades). Aguardando liberação..."
+      fi
+      sleep 3
+      count=$((count + 1))
+      if [[ $count -gt 100 ]]; then
+        log_warn "Timeout aguardando o bloqueio do APT/dpkg. Continuando mesmo assim..."
+        break
+      fi
+    fi
+  done
+  if [[ $count -gt 0 ]]; then
+    log_info "Bloqueio liberado."
+  fi
+}
+
 ID=""
 VERSION_ID=""
 
@@ -65,7 +110,7 @@ check_root() {
 }
 
 add_zabbix_repo() {
-  local os pkg_url zabbix_ver version_id major_ver
+  local os pkg_url zabbix_ver version_id major_ver arch repo_arch rpm_arch
 
   load_os_info
 
@@ -74,8 +119,18 @@ add_zabbix_repo() {
   zabbix_ver="7.0"
   major_ver="${version_id%%.*}"
 
+  arch="$(uname -m)"
+  if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+    repo_arch="-arm64"
+    rpm_arch="aarch64"
+  else
+    repo_arch=""
+    rpm_arch="x86_64"
+  fi
+
   case "$os" in
     ubuntu)
+      wait_for_dpkg_lock
       # Temporariamente desabilita o ESM hook para evitar falhas no apt update (comum em containers/WSL/sistemas mínimos)
       local esm_hook="/etc/apt/apt.conf.d/20apt-esm-hook.conf"
       local esm_hook_bak="${esm_hook}.bak"
@@ -89,7 +144,7 @@ add_zabbix_repo() {
       apt-get update -qq || true
       apt-get install -y gnupg || log_warn "Não foi possível instalar o pacote gnupg."
 
-      pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/ubuntu/pool/main/z/zabbix-release/zabbix-release_${zabbix_ver}-2+ubuntu${version_id}_all.deb"
+      pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/ubuntu${repo_arch}/pool/main/z/zabbix-release/zabbix-release_${zabbix_ver}-2+ubuntu${version_id}_all.deb"
       local tmp_deb
       tmp_deb="$(mktemp).deb"
       curl -fsSL "$pkg_url" -o "$tmp_deb"
@@ -102,6 +157,15 @@ add_zabbix_repo() {
       dpkg -i --force-confmiss "$tmp_deb" || apt-get install -f -y
       rm -f "$tmp_deb"
 
+      if [[ -n "$repo_arch" ]]; then
+        log_info "Ajustando configuração do repositório Zabbix para arquitetura ARM..."
+        for file in /etc/apt/sources.list.d/zabbix.list /etc/apt/sources.list.d/zabbix.sources; do
+          if [[ -f "$file" ]]; then
+            sed -i "s|ubuntu-arm64|ubuntu|g; s|ubuntu|ubuntu-arm64|g" "$file"
+          fi
+        done
+      fi
+
       log_info "Atualizando os repositórios APT..."
       apt-get update -qq || log_warn "Aviso: apt-get update encontrou erros em repositórios secundários, prosseguindo com a instalação do agente."
 
@@ -112,12 +176,13 @@ add_zabbix_repo() {
       fi
       ;;
     debian)
+      wait_for_dpkg_lock
       # Garante que gnupg está instalado
       log_info "Instalando gnupg para compatibilidade de chaves GPG..."
       apt-get update -qq || true
       apt-get install -y gnupg || log_warn "Não foi possível instalar o pacote gnupg."
 
-      pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/debian/pool/main/z/zabbix-release/zabbix-release_${zabbix_ver}-2+debian${version_id}_all.deb"
+      pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/debian${repo_arch}/pool/main/z/zabbix-release/zabbix-release_${zabbix_ver}-2+debian${version_id}_all.deb"
       local tmp_deb
       tmp_deb="$(mktemp).deb"
       curl -fsSL "$pkg_url" -o "$tmp_deb"
@@ -130,12 +195,21 @@ add_zabbix_repo() {
       dpkg -i --force-confmiss "$tmp_deb" || apt-get install -f -y
       rm -f "$tmp_deb"
 
+      if [[ -n "$repo_arch" ]]; then
+        log_info "Ajustando configuração do repositório Zabbix para arquitetura ARM..."
+        for file in /etc/apt/sources.list.d/zabbix.list /etc/apt/sources.list.d/zabbix.sources; do
+          if [[ -f "$file" ]]; then
+            sed -i "s|debian-arm64|debian|g; s|debian|debian-arm64|g" "$file"
+          fi
+        done
+      fi
+
       log_info "Atualizando os repositórios APT..."
       apt-get update -qq || log_warn "Aviso: apt-get update encontrou erros em repositórios secundários, prosseguindo com a instalação do agente."
       ;;
     centos|rhel|almalinux|rocky|ol)
       _fix_centos_vault
-      pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/rhel/${major_ver}/x86_64/zabbix-release-${zabbix_ver}-1.el${major_ver}.noarch.rpm"
+      pkg_url="https://repo.zabbix.com/zabbix/${zabbix_ver}/rhel/${major_ver}/${rpm_arch}/zabbix-release-${zabbix_ver}-1.el${major_ver}.noarch.rpm"
       rpm -Uvh "$pkg_url" || true
       _rhel_pkg_mgr clean all
       ;;
@@ -201,6 +275,7 @@ install_zabbix_agent() {
   local major_ver="${VERSION_ID%%.*}"
   case "$os" in
     ubuntu|debian)
+      wait_for_dpkg_lock
       apt-get install -y zabbix-agent2
       ;;
     centos|rhel|almalinux|rocky|ol)
