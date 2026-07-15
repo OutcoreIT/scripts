@@ -58,6 +58,8 @@ if [ "$instalar_docker" = true ]; then
     curl -SL https://github.com/docker/compose/releases/download/v2.34.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
 fi
+echo "💻 Desabilitando Mouse no Vim..."
+echo "set mouse-=a" >> ~/.vimrc
 
 # Instalar e configurar Zsh sem iniciar automaticamente
 echo "💻 Instalando e configurando Zsh..."
