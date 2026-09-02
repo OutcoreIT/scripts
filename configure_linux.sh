@@ -63,7 +63,7 @@ echo "set mouse-=a" >> ~/.vimrc
 
 # Instalar e configurar Zsh sem iniciar automaticamente
 echo "💻 Instalando e configurando Zsh..."
-sudo chsh -s $(which zsh) $(whoami)
+sudo chsh -s $(which zsh) $(whoami) || true
 
 if [ -d "$HOME/.oh-my-zsh" ]; then
     echo "🚀 Oh My Zsh já está instalado. Removendo e reinstalando..."
@@ -71,15 +71,28 @@ if [ -d "$HOME/.oh-my-zsh" ]; then
 fi
 
 echo "⏳ Instalando Oh My Zsh..."
-RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" || echo "⚠️ Falha ao baixar/instalar Oh My Zsh, continuando..."
 
 # Instalar temas e plugins do Zsh
 echo "🎨 Instalando Powerlevel10k..."
-git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.oh-my-zsh/custom/themes/powerlevel10k
+if [ ! -d "$HOME/.oh-my-zsh/custom/themes/powerlevel10k" ]; then
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.oh-my-zsh/custom/themes/powerlevel10k || echo "⚠️ Falha ao instalar Powerlevel10k, continuando..."
+else
+    echo "ℹ️ Powerlevel10k já está instalado."
+fi
 
 echo "🎨 Instalando Zsh Syntax Highlighting e Autosuggestions..."
-git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
-git clone https://github.com/zsh-users/zsh-autosuggestions.git ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting" ]; then
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting || echo "⚠️ Falha ao instalar Zsh Syntax Highlighting, continuando..."
+else
+    echo "ℹ️ Zsh Syntax Highlighting já está instalado."
+fi
+
+if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ]; then
+    git clone https://github.com/zsh-users/zsh-autosuggestions.git ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions || echo "⚠️ Falha ao instalar Zsh Autosuggestions, continuando..."
+else
+    echo "ℹ️ Zsh Autosuggestions já está instalado."
+fi
 
 # Instalar plugins adicionais do Oh My Zsh
 echo "🔌 Instalando plugins adicionais do Oh My Zsh..."
@@ -87,29 +100,52 @@ mkdir -p ~/.oh-my-zsh/custom/plugins
 for plugin in git composer z docker docker-compose docker-machine jump sudo; do
     if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/$plugin" ]; then
         echo "📥 Baixando plugin: $plugin"
-        git clone "https://github.com/ohmyzsh/ohmyzsh.git" --depth=1 ~/.oh-my-zsh/custom/plugins/$plugin
+        git clone "https://github.com/ohmyzsh/ohmyzsh.git" --depth=1 ~/.oh-my-zsh/custom/plugins/$plugin || echo "⚠️ Falha ao baixar plugin: $plugin, continuando..."
     fi
 done
     
-# Instalar TheFuck corretamente com pipx
+# Instalar TheFuck (ignora erros se falhar e continua)
 echo "🤦 Instalando TheFuck..."
-sudo apt install -y pipx
-pipx ensurepath
-pipx install thefuck --force
+(
+    set +e
+    if ! command -v pipx >/dev/null 2>&1; then
+        sudo apt install -y pipx 2>/dev/null
+    fi
 
-# Instalar ColorLS via RubyGems
-echo "🌈 Verificando se é possível instalar ColorLS..."
-ruby_version=$(ruby -e 'puts RUBY_VERSION')
-required_version="3.0.0"
+    if command -v pipx >/dev/null 2>&1; then
+        pipx ensurepath
+        pipx install thefuck --force
+    elif command -v pip3 >/dev/null 2>&1; then
+        pip3 install thefuck --user || pip3 install thefuck --user --break-system-packages
+    fi
+) || true
 
-if [ "$(printf '%s\n' "$required_version" "$ruby_version" | sort -V | head -n1)" = "$required_version" ]; then
-    echo "🌈 Instalando ColorLS..."
-    sudo gem install colorls
+if ! command -v thefuck >/dev/null 2>&1; then
+    echo "⚠️ TheFuck não pôde ser instalado. Ignorando e continuando..."
 else
-    echo "⚠️ Versão do Ruby ($ruby_version) é mais antiga que a necessária para ColorLS (3.0.0+)"
-    echo "⚠️ ColorLS não será instalado automaticamente"
-    echo "ℹ️ Para instalar ColorLS no futuro, atualize o Ruby para a versão 3.0.0 ou superior e depois execute: sudo gem install colorls"
+    echo "✅ TheFuck instalado com sucesso!"
 fi
+
+# Instalar ColorLS via RubyGems (ignora erros se falhar e continua)
+echo "🌈 Verificando se é possível instalar ColorLS..."
+(
+    set +e
+    if command -v ruby >/dev/null 2>&1; then
+        ruby_version=$(ruby -e 'puts RUBY_VERSION' 2>/dev/null || echo "0.0.0")
+        required_version="3.0.0"
+
+        if [ "$(printf '%s\n' "$required_version" "$ruby_version" | sort -V | head -n1)" = "$required_version" ]; then
+            echo "🌈 Instalando ColorLS..."
+            sudo gem install colorls || echo "⚠️ Falha ao instalar ColorLS via gem, continuando..."
+        else
+            echo "⚠️ Versão do Ruby ($ruby_version) é mais antiga que a necessária para ColorLS (3.0.0+)"
+            echo "⚠️ ColorLS não será instalado automaticamente"
+            echo "ℹ️ Para instalar ColorLS no futuro, atualize o Ruby para a versão 3.0.0 ou superior e depois execute: sudo gem install colorls"
+        fi
+    else
+        echo "⚠️ Ruby não encontrado. ColorLS não será instalado."
+    fi
+) || true
 
 # Adicionado Chaves de Autenticação
 echo "💻 Adicionado Chaves de Autenticação..."
@@ -195,7 +231,8 @@ echo "source ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions
 echo "source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme" >> ~/.zshrc
 
 # Instalar iterm2
-curl -L https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash
+echo "💻 Instalando shell integration do iTerm2..."
+curl -fsSL https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash || echo "⚠️ Falha ao instalar shell integration do iTerm2, continuando..."
 
 # Mensagem final para o usuário
 echo -e "\n✅ Configuração concluída!"
