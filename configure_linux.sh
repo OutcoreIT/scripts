@@ -73,6 +73,24 @@ fi
 echo "⏳ Instalando Oh My Zsh..."
 RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" || echo "⚠️ Falha ao baixar/instalar Oh My Zsh, continuando..."
 
+# Configurar logotipo personalizado da OutCore no Oh My Zsh
+echo "🎨 Configurando logotipo da OutCore no Oh My Zsh..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+BANNER_SCRIPT="${SCRIPT_DIR}/outcore_banner.sh"
+
+if [ ! -f "$BANNER_SCRIPT" ]; then
+    echo "📥 Baixando outcore_banner.sh..."
+    curl -fsSL "https://raw.githubusercontent.com/OutcoreIT/scripts/main/outcore_banner.sh" -o /tmp/outcore_banner.sh || true
+    BANNER_SCRIPT="/tmp/outcore_banner.sh"
+fi
+
+if [ -f "$BANNER_SCRIPT" ]; then
+    mkdir -p "$HOME/.oh-my-zsh/custom"
+    cp "$BANNER_SCRIPT" "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
+    chmod +x "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
+    bash "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" --patch-omz || echo "⚠️ Falha ao aplicar patch do banner no Oh My Zsh, continuando..."
+fi
+
 # Instalar temas e plugins do Zsh
 echo "🎨 Instalando Powerlevel10k..."
 if [ ! -d "$HOME/.oh-my-zsh/custom/themes/powerlevel10k" ]; then
@@ -233,6 +251,11 @@ echo "source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme" >
 # Instalar iterm2
 echo "💻 Instalando shell integration do iTerm2..."
 curl -fsSL https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash || echo "⚠️ Falha ao instalar shell integration do iTerm2, continuando..."
+
+# Exibir banner da OutCore
+if [ -f "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" ]; then
+    bash "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" "Ambiente configurado com sucesso pela OutCore!" || true
+fi
 
 # Mensagem final para o usuário
 echo -e "\n✅ Configuração concluída!"
