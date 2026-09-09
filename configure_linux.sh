@@ -107,12 +107,12 @@ if [ -f "$BANNER_SCRIPT" ]; then
     sudo install -m 0755 /dev/stdin /etc/update-motd.d/99-outcore <<'EOF'
 #!/usr/bin/env bash
 
-/usr/local/bin/outcore_banner "Acesso monitorado. Use somente com autorização."
+/usr/local/bin/outcore_banner "Servidor administrado pela OutCore · acesso monitorado"
 
-printf 'Host: %s | Uptime: %s\\n' "$(hostname -f 2>/dev/null || hostname)" "$(uptime -p)"
-printf 'Disco (/): %s | Memória: %s\\n\\n' \
-    "$(df -h / | awk 'NR == 2 {print $3 " de " $2 " (" $5 ")"}')" \
-    "$(free -h | awk '/^Mem:/ {print $3 " de " $2}')"
+printf '  host      %s\n' "$(hostname -f 2>/dev/null || hostname)"
+printf '  uptime    %s\n' "$(uptime -p)"
+printf '  disco     %s\n' "$(df -h / | awk 'NR == 2 {print $3 " de " $2 " (" $5 ")"}')"
+printf '  memória   %s\n\n' "$(free -h | awk '/^Mem:/ {print $3 " de " $2}')"
 EOF
 
     # Mantém a informação de último login fora de todas as sessões SSH.
