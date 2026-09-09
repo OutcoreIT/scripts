@@ -2,6 +2,9 @@
 
 set -e
 
+# Diretório dos scripts auxiliares, independentemente do diretório atual.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+
 # Função para perguntar ao usuário se deseja instalar o Docker
 perguntar_docker() {
     while true; do
@@ -14,8 +17,22 @@ perguntar_docker() {
     done
 }
 
+# Função para perguntar ao usuário se deseja instalar e executar o instalador
+# do Zabbix Agent ao final desta configuração.
+perguntar_zabbix_agent() {
+    while true; do
+        read -p "📡 Deseja instalar e configurar o Zabbix Agent? (s/n): " resposta
+        case $resposta in
+            [SsyY]* ) instalar_zabbix_agent=true; break;;
+            [Nn]* ) instalar_zabbix_agent=false; break;;
+            * ) echo "Por favor, responda com 's' para sim ou 'n' para não.";;
+        esac
+    done
+}
+
 # Perguntar ao usuário se deseja instalar o Docker
 perguntar_docker
+perguntar_zabbix_agent
 
 # Remover pacotes conflitantes do Docker apenas se o usuário optou por instalá-lo
 if [ "$instalar_docker" = true ]; then
@@ -75,7 +92,6 @@ RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/
 
 # Configurar logotipo personalizado da OutCore no Oh My Zsh
 echo "🎨 Configurando logotipo da OutCore no Oh My Zsh..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 BANNER_SCRIPT="${SCRIPT_DIR}/outcore_banner.sh"
 
 if [ ! -f "$BANNER_SCRIPT" ]; then
@@ -123,6 +139,16 @@ EOF
     sudo install -d -m 0755 /etc/ssh/sshd_config.d
     printf '%s\n' 'PrintLastLog no' | sudo tee /etc/ssh/sshd_config.d/99-outcore.conf >/dev/null
     sudo sshd -t && sudo systemctl reload ssh || echo "⚠️ Não foi possível recarregar o SSH; valide a configuração manualmente."
+fi
+
+# Instalar o agente de auditoria central. O manager pode ser sobrescrito sem
+# alterar o repositório: WAZUH_MANAGER=outro-manager ./configure_linux.sh
+WAZUH_INSTALLER="${SCRIPT_DIR}/install_wazuh_agent.sh"
+if [ -x "$WAZUH_INSTALLER" ]; then
+    echo "🛡️ Instalando Wazuh Agent..."
+    sudo "$WAZUH_INSTALLER" --manager "${WAZUH_MANAGER:-wazuh.outcore.com.br}"
+else
+    echo "⚠️ Instalador Wazuh não encontrado ou sem permissão de execução: $WAZUH_INSTALLER"
 fi
 
 # Instalar temas e plugins do Zsh
@@ -291,12 +317,29 @@ if [ -f "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" ]; then
     bash "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" "Ambiente configurado com sucesso pela OutCore!" || true
 fi
 
+# Instalar e configurar o Zabbix somente após concluir as demais etapas.
+if [ "$instalar_zabbix_agent" = true ]; then
+    ZABBIX_INSTALLER="${SCRIPT_DIR}/installZabbixAgent.sh"
+    if [ -f "$ZABBIX_INSTALLER" ]; then
+        echo "📡 Instalando e configurando o Zabbix Agent..."
+        sudo bash "$ZABBIX_INSTALLER"
+    else
+        echo "⚠️ O instalador do Zabbix não foi encontrado em: $ZABBIX_INSTALLER"
+        echo "ℹ️ O Zabbix não foi instalado."
+    fi
+fi
+
 # Mensagem final para o usuário
 echo -e "\n✅ Configuração concluída!"
 if [ "$instalar_docker" = true ]; then
     echo -e "🐳 Docker foi instalado com sucesso!"
 else
     echo -e "ℹ️ Docker não foi instalado conforme solicitado."
+fi
+if [ "$instalar_zabbix_agent" = true ]; then
+    echo -e "📡 O Zabbix Agent foi instalado/configurado (ou o instalador foi executado)."
+else
+    echo -e "ℹ️ Zabbix Agent não foi instalado conforme solicitado."
 fi
 echo -e "👉 Para aplicar as mudanças, execute:\n"
 echo -e "   exec zsh\n"
