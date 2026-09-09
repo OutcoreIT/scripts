@@ -89,6 +89,36 @@ if [ -f "$BANNER_SCRIPT" ]; then
     cp "$BANNER_SCRIPT" "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
     chmod +x "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
     bash "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" --patch-omz || echo "⚠️ Falha ao aplicar patch do banner no Oh My Zsh, continuando..."
+
+    # Configurar MOTD global para sessões SSH. O banner fica fora do diretório
+    # do usuário para funcionar para qualquer conta autorizada no servidor.
+    echo "🔐 Configurando banner OutCore no login SSH..."
+    sudo install -m 0755 "$BANNER_SCRIPT" /usr/local/bin/outcore_banner
+
+    # Desabilita somente os scripts padrão do Ubuntu, preservando eventuais
+    # MOTDs personalizados criados pelo administrador.
+    for motd_script in \
+        00-header 10-help-text 50-landscape-sysinfo 50-motd-news 85-fwupd \
+        88-esm-announce 91-contract-ua-esm-status 91-release-upgrade \
+        92-unattended-upgrades 95-hwe-eol 97-overlayroot 98-fsck-at-reboot; do
+        sudo chmod a-x "/etc/update-motd.d/${motd_script}" 2>/dev/null || true
+    done
+
+    sudo install -m 0755 /dev/stdin /etc/update-motd.d/99-outcore <<'EOF'
+#!/usr/bin/env bash
+
+/usr/local/bin/outcore_banner "Acesso monitorado. Use somente com autorização."
+
+printf 'Host: %s | Uptime: %s\\n' "$(hostname -f 2>/dev/null || hostname)" "$(uptime -p)"
+printf 'Disco (/): %s | Memória: %s\\n\\n' \
+    "$(df -h / | awk 'NR == 2 {print $3 " de " $2 " (" $5 ")"}')" \
+    "$(free -h | awk '/^Mem:/ {print $3 " de " $2}')"
+EOF
+
+    # Mantém a informação de último login fora de todas as sessões SSH.
+    sudo install -d -m 0755 /etc/ssh/sshd_config.d
+    printf '%s\\n' 'PrintLastLog no' | sudo tee /etc/ssh/sshd_config.d/99-outcore.conf >/dev/null
+    sudo sshd -t && sudo systemctl reload ssh || echo "⚠️ Não foi possível recarregar o SSH; valide a configuração manualmente."
 fi
 
 # Instalar temas e plugins do Zsh
