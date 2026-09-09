@@ -90,6 +90,12 @@ if [ -f "$BANNER_SCRIPT" ]; then
     chmod +x "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
     bash "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" --patch-omz || echo "⚠️ Falha ao aplicar patch do banner no Oh My Zsh, continuando..."
 
+    # O banner de acesso é responsabilidade do MOTD. Remove chamadas legadas
+    # no Zsh para impedir uma segunda impressão depois de "Last login".
+    if [ -f "$HOME/.zshrc" ]; then
+        sed -i -E '/^[[:space:]]*(bash[[:space:]]+)?[^#]*outcore_banner\.zsh([[:space:]].*)?$/d' "$HOME/.zshrc"
+    fi
+
     # Configurar MOTD global para sessões SSH. O banner fica fora do diretório
     # do usuário para funcionar para qualquer conta autorizada no servidor.
     echo "🔐 Configurando banner OutCore no login SSH..."

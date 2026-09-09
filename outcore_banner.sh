@@ -38,13 +38,19 @@ print_outcore_banner() {
     setup_colors
     local custom_msg="${1:-Servidor administrado pela OutCore, proibido acesso não autorizado!}"
 
-    # Marca tipográfica compacta: funciona melhor em SSH, inclusive em janelas
-    # estreitas e fontes que não alinham bem artes ASCII extensas.
     printf '\n'
-    printf '%s%sout%s%score%s\n' \
-        "$COLOR_BOLD" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_RESET"
-    printf '%s────────────────────────────────────────%s\n' \
-        "$COLOR_RED" "$COLOR_RESET"
+    # Logotipo completo, limitado a cinco linhas para continuar legível em SSH.
+    printf "%s   _..._         %s         __                              %s\n" \
+        "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RESET"
+    printf "%s .' %s.-. %s'.       %s ____   __  __  / /_   %s_____  ____    _____  ___ %s\n" \
+        "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_RESET"
+    printf "%s/  %s/   \\%s  \\     %s/ __ \\ / / / / / __/  %s/ ___/ / __ \\  / ___/ / _ \\%s\n" \
+        "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_RESET"
+    printf "%s\\  %s\\___/%s  /    %s/ /_/ // /_/ / / /_   %s/ /__  / /_/ / / /    /  __/%s\n" \
+        "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_RESET"
+    printf "%s '. ___ .'     %s\\____/ \\__,_/  \\__/   %s\\___/  \\____/ /_/     \\___/ %s\n" \
+        "$COLOR_RED" "$COLOR_WHITE" "$COLOR_RED" "$COLOR_RESET"
+    printf '\n'
 
     if [ -n "$custom_msg" ]; then
         printf "%s%s%s%s\n\n" "$COLOR_GRAY" "$COLOR_WHITE" "$custom_msg" "$COLOR_RESET"
