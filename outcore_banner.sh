@@ -36,7 +36,7 @@ setup_colors() {
 # Function to print the OutCore logo banner
 print_outcore_banner() {
     setup_colors
-    local custom_msg="${1:-Hooray! Oh My Zsh has been updated!}"
+    local custom_msg="${1:-Servidor administrado pela OutCore, proibido acesso não autorizado!}"
 
     printf '\n'
     printf "%s   _..._         %s         __                              %s\n" \
