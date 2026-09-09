@@ -85,13 +85,10 @@ if [ ! -f "$BANNER_SCRIPT" ]; then
 fi
 
 if [ -f "$BANNER_SCRIPT" ]; then
-    mkdir -p "$HOME/.oh-my-zsh/custom"
-    cp "$BANNER_SCRIPT" "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
-    chmod +x "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
-    bash "$HOME/.oh-my-zsh/custom/outcore_banner.zsh" --patch-omz || echo "⚠️ Falha ao aplicar patch do banner no Oh My Zsh, continuando..."
-
-    # O banner de acesso é responsabilidade do MOTD. Remove chamadas legadas
-    # no Zsh para impedir uma segunda impressão depois de "Last login".
+    # O banner de acesso é responsabilidade exclusiva do MOTD. Não alteramos o
+    # atualizador do Oh My Zsh: ele pode executar no login e duplicar o banner.
+    # Remove a cópia legada por usuário e chamadas diretas no Zsh.
+    rm -f "$HOME/.oh-my-zsh/custom/outcore_banner.zsh"
     if [ -f "$HOME/.zshrc" ]; then
         sed -i -E '/^[[:space:]]*(bash[[:space:]]+)?[^#]*outcore_banner\.zsh([[:space:]].*)?$/d' "$HOME/.zshrc"
     fi
@@ -105,8 +102,9 @@ if [ -f "$BANNER_SCRIPT" ]; then
     # MOTDs personalizados criados pelo administrador.
     for motd_script in \
         00-header 10-help-text 50-landscape-sysinfo 50-motd-news 85-fwupd \
-        88-esm-announce 91-contract-ua-esm-status 91-release-upgrade \
-        92-unattended-upgrades 95-hwe-eol 97-overlayroot 98-fsck-at-reboot; do
+        88-esm-announce 90-updates-available 91-contract-ua-esm-status \
+        91-release-upgrade 92-unattended-upgrades 95-hwe-eol 97-overlayroot \
+        98-fsck-at-reboot 98-reboot-required; do
         sudo chmod a-x "/etc/update-motd.d/${motd_script}" 2>/dev/null || true
     done
 
@@ -123,7 +121,7 @@ EOF
 
     # Mantém a informação de último login fora de todas as sessões SSH.
     sudo install -d -m 0755 /etc/ssh/sshd_config.d
-    printf '%s\\n' 'PrintLastLog no' | sudo tee /etc/ssh/sshd_config.d/99-outcore.conf >/dev/null
+    printf '%s\n' 'PrintLastLog no' | sudo tee /etc/ssh/sshd_config.d/99-outcore.conf >/dev/null
     sudo sshd -t && sudo systemctl reload ssh || echo "⚠️ Não foi possível recarregar o SSH; valide a configuração manualmente."
 fi
 
