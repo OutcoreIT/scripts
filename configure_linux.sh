@@ -80,7 +80,27 @@ echo "set mouse-=a" >> ~/.vimrc
 
 # Instalar e configurar Zsh sem iniciar automaticamente
 echo "💻 Instalando e configurando Zsh..."
-sudo chsh -s $(which zsh) $(whoami) || true
+ZSH_PATH="$(command -v zsh)"
+if [ "$(id -u)" -eq 0 ]; then
+    TARGET_USER="$(id -un)"
+else
+    TARGET_USER="${SUDO_USER:-$(id -un)}"
+fi
+
+if [ -x "$ZSH_PATH" ]; then
+    # usermod evita a autenticação PAM interativa do chsh, que falha em
+    # sessões root abertas com sudo e pode deixar a conta com shell inválido.
+    if sudo usermod -s "$ZSH_PATH" "$TARGET_USER"; then
+        TARGET_SHELL="$(getent passwd "$TARGET_USER" | cut -d: -f7)"
+        if [ "$TARGET_SHELL" != "$ZSH_PATH" ] || [ ! -x "$TARGET_SHELL" ]; then
+            echo "⚠️ Shell de $TARGET_USER não foi configurado corretamente; mantendo a sessão atual."
+        fi
+    else
+        echo "⚠️ Não foi possível definir o Zsh como shell de $TARGET_USER; mantendo o shell atual."
+    fi
+else
+    echo "⚠️ Zsh não foi encontrado; mantendo o shell atual."
+fi
 
 if [ -d "$HOME/.oh-my-zsh" ]; then
     echo "🚀 Oh My Zsh já está instalado. Removendo e reinstalando..."
