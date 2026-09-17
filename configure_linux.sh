@@ -2,6 +2,13 @@
 
 set -e
 
+# Este instalador usa apt, snap, systemd e a estrutura de MOTD do Linux.
+# Evita mensagens confusas caso seja executado acidentalmente em outro SO.
+if [ "$(uname -s)" != "Linux" ]; then
+    echo "❌ configure_linux.sh só pode ser executado em Linux. Sistema detectado: $(uname -s)" >&2
+    exit 1
+fi
+
 # Diretório dos scripts auxiliares, independentemente do diretório atual.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 
@@ -116,11 +123,17 @@ BANNER_SCRIPT="${SCRIPT_DIR}/outcore_banner.sh"
 
 if [ ! -f "$BANNER_SCRIPT" ]; then
     echo "📥 Baixando outcore_banner.sh..."
-    curl -fsSL "https://raw.githubusercontent.com/OutcoreIT/scripts/main/outcore_banner.sh" -o /tmp/outcore_banner.sh || true
-    BANNER_SCRIPT="/tmp/outcore_banner.sh"
+    BANNER_DOWNLOAD="$(mktemp /tmp/outcore_banner.XXXXXX)"
+    if curl -fsSL "https://raw.githubusercontent.com/OutcoreIT/scripts/main/outcore_banner.sh" -o "$BANNER_DOWNLOAD" \
+        && [ -s "$BANNER_DOWNLOAD" ]; then
+        BANNER_SCRIPT="$BANNER_DOWNLOAD"
+    else
+        rm -f "$BANNER_DOWNLOAD"
+        BANNER_SCRIPT=""
+    fi
 fi
 
-if [ -f "$BANNER_SCRIPT" ]; then
+if [ -n "$BANNER_SCRIPT" ] && [ -f "$BANNER_SCRIPT" ]; then
     # O banner de acesso é responsabilidade exclusiva do MOTD. Não alteramos o
     # atualizador do Oh My Zsh: ele pode executar no login e duplicar o banner.
     # Remove a cópia legada por usuário e chamadas diretas no Zsh.
@@ -132,7 +145,12 @@ if [ -f "$BANNER_SCRIPT" ]; then
     # Configurar MOTD global para sessões SSH. O banner fica fora do diretório
     # do usuário para funcionar para qualquer conta autorizada no servidor.
     echo "🔐 Configurando banner OutCore no login SSH..."
-    sudo install -m 0755 "$BANNER_SCRIPT" /usr/local/bin/outcore_banner
+    BANNER_TARGET="/usr/local/bin/outcore_banner"
+    sudo install -d -m 0755 "$(dirname "$BANNER_TARGET")"
+    if ! sudo install -m 0755 "$BANNER_SCRIPT" "$BANNER_TARGET"; then
+        echo "❌ Não foi possível instalar o banner: arquivo-fonte=$BANNER_SCRIPT destino=$BANNER_TARGET" >&2
+        exit 1
+    fi
 
     # Desabilita somente os scripts padrão do Ubuntu, preservando eventuais
     # MOTDs personalizados criados pelo administrador.
@@ -144,7 +162,8 @@ if [ -f "$BANNER_SCRIPT" ]; then
         sudo chmod a-x "/etc/update-motd.d/${motd_script}" 2>/dev/null || true
     done
 
-    sudo install -m 0755 /dev/stdin /etc/update-motd.d/99-outcore <<'EOF'
+    MOTD_SCRIPT="$(mktemp /tmp/99-outcore.XXXXXX)"
+    cat > "$MOTD_SCRIPT" <<'EOF'
 #!/usr/bin/env bash
 
 /usr/local/bin/outcore_banner "Servidor administrado pela OutCore · acesso monitorado"
@@ -154,6 +173,13 @@ printf '  uptime    %s\n' "$(uptime -p)"
 printf '  disco     %s\n' "$(df -h / | awk 'NR == 2 {print $3 " de " $2 " (" $5 ")"}')"
 printf '  memória   %s\n\n' "$(free -h | awk '/^Mem:/ {print $3 " de " $2}')"
 EOF
+    sudo install -d -m 0755 /etc/update-motd.d
+    if ! sudo install -m 0755 "$MOTD_SCRIPT" /etc/update-motd.d/99-outcore; then
+        rm -f "$MOTD_SCRIPT"
+        echo "❌ Não foi possível instalar o MOTD em /etc/update-motd.d/99-outcore" >&2
+        exit 1
+    fi
+    rm -f "$MOTD_SCRIPT"
 
     # Mantém a informação de último login fora de todas as sessões SSH.
     sudo install -d -m 0755 /etc/ssh/sshd_config.d
